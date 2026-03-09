@@ -1,0 +1,182 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-toolbar {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid #ccc;
+}
+
+.app-content {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.app-left {
+  flex: 0 0 280px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #ccc;
+  min-width: 0;
+}
+
+.app-right {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Folder Tree */
+.folder-tree {
+  flex: 0 0 120px;
+  border-bottom: 1px solid #ccc;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.folder-tree-header {
+  padding: 6px 10px;
+  font-weight: 600;
+  background: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+}
+
+.folder-tree-content {
+  flex: 1;
+  overflow: auto;
+  padding: 4px;
+}
+
+.folder-tree-item-root {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.folder-tree-empty {
+  color: #888;
+  padding: 8px;
+  font-size: 12px;
+}
+
+/* File List */
+.file-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.file-list-header {
+  padding: 6px 10px;
+  font-weight: 600;
+  background: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+}
+
+.file-list-content {
+  flex: 1;
+  overflow: auto;
+  padding: 4px;
+}
+
+.file-list-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.file-list-item {
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.file-list-item:hover {
+  background: #eee;
+}
+
+.file-list-item.selected {
+  background: #cce5ff;
+}
+
+.file-list-empty,
+.file-list-loading {
+  color: #888;
+  padding: 8px;
+}
+
+/* Media View */
+.media-view {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a2a2a;
+}
+
+.media-view.empty {
+  background: #f0f0f0;
+}
+
+.media-view-placeholder {
+  color: #888;
+}
+
+.image-view {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-view-img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.image-view-loading {
+  color: #888;
+}
+
+/* Status Bar */
+.status-bar {
+  flex: 0 0 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 11px;
+  background: #f5f5f5;
+  border-top: 1px solid #ccc;
+  gap: 16px;
+}
+
+.status-bar-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-bar-pos {
+  flex-shrink: 0;
+}
