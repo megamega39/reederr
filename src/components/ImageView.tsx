@@ -1,25 +1,47 @@
+import { memo } from 'react';
+import { useLayoutStore } from '../stores/layoutStore';
+
 interface ImageViewProps {
-  src: string | null;
+  srcs: (string | null)[];
   alt: string;
+  onDimensions?: (path: string, w: number, h: number) => void;
+  paths?: string[];
 }
 
-export function ImageView({ src, alt }: ImageViewProps) {
-  if (!src) {
-    return (
-      <div className="image-view image-view-loading">
-        <span>読み込み中...</span>
-      </div>
-    );
-  }
+export const ImageView = memo(({ srcs, alt, onDimensions, paths }: ImageViewProps) => {
+  const validSrcs = srcs.filter((s): s is string => !!s);
+
+  const scaleMode = useLayoutStore((s) => s.scaleMode);
+  const isSpread = validSrcs.length > 1;
 
   return (
-    <div className="image-view">
-      <img
-        src={src}
-        alt={alt}
-        className="image-view-img"
-        style={{ objectFit: 'contain', width: '100%', height: '100%' }}
-      />
+    <div className={`image-view image-view--${isSpread ? 'spread' : 'single'} scale-${scaleMode}`}>
+      {validSrcs.length === 0 ? (
+        <div className="image-view-loading">
+          <span>読み込み中...</span>
+        </div>
+      ) : (
+        validSrcs.map((src, i) => {
+          const path = paths?.[i] || src;
+          return (
+            <div key={path} className="image-view-page">
+              <img
+                src={src}
+                alt={alt}
+                className="image-view-img"
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  const w = img.naturalWidth;
+                  const h = img.naturalHeight;
+                  if (paths?.[i] && onDimensions && w > 0 && h > 0) {
+                    onDimensions(paths[i], w, h);
+                  }
+                }}
+              />
+            </div>
+          );
+        })
+      )}
     </div>
   );
-}
+});

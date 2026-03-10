@@ -11,8 +11,23 @@ export default defineConfig({
       },
       preload: {
         input: 'electron/preload.ts',
+        vite: {
+          build: {
+            rollupOptions: {
+              output: {
+                entryFileNames: '[name].cjs',
+                chunkFileNames: '[name].cjs',
+              },
+            },
+          },
+        },
       },
     }),
   ],
   base: './',
+  server: {
+    port: 5173,
+    strictPort: true,
+    host: '127.0.0.1',
+  },
 });

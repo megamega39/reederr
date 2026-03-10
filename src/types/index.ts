@@ -3,4 +3,12 @@ export interface DirectoryEntry {
   path: string;
   isDirectory: boolean;
   isArchive: boolean;
+  size?: number;
+  mtime?: number;
+}
+
+export interface HistoryEntry {
+  path: string;
+  name: string;
+  type: 'folder' | 'archive' | 'pc' | 'other';
 }

@@ -3,6 +3,30 @@
   "version": "0.1.0",
   "main": "dist-electron/main.js",
   "description": "Unicode Leeyes風 画像/メディアビューア",
+  "build": {
+    "appId": "com.reederr.app",
+    "productName": "reederr",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**"
+    ],
+    "extraResources": [
+      {
+        "from": "tools/7zip",
+        "to": "tools/7zip",
+        "filter": [
+          "7z.exe",
+          "7z.dll"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  },
   "author": "",
   "license": "MIT",
   "private": true,
@@ -10,10 +34,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.node.json && vite build && tsc -p tsconfig.electron.json",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dist": "npm run build && electron-builder"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.2",
+    "lucide-react": "^0.577.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.2"
@@ -24,6 +50,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "electron": "^33.2.0",
+    "electron-builder": "^25.0.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "vite-plugin-electron": "^0.29.0"
