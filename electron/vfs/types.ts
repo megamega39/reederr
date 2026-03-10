@@ -3,6 +3,8 @@ export interface DirectoryEntry {
   path: string;
   isDirectory: boolean;
   isArchive: boolean;
+  size?: number;
+  mtime?: number;
 }
 
 export interface FileStats {
