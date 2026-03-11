@@ -17,30 +17,34 @@ function TreeItem({
   entry,
   depth,
   isSelected,
+  prefix,
 }: {
   entry: { name: string; path: string; isDirectory: boolean; isArchive?: boolean };
   depth: number;
   isSelected: boolean;
+  prefix: string;
 }) {
   const itemRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (isSelected && itemRef.current) {
       const el = itemRef.current;
-      requestAnimationFrame(() => {
+      setTimeout(() => {
         if (el.isConnected) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-      });
+      }, 150);
     }
   }, [isSelected]);
 
-  const expanded = useViewerStore((s) => s.expandedPaths[entry.path]);
+  const nodeKey = `${prefix}-${entry.path}`;
+  const expanded = useViewerStore((s) => s.expandedPaths[nodeKey]);
   const toggleExpand = useViewerStore((s) => s.toggleExpand);
   const ensureTreeChildren = useViewerStore((s) => s.ensureTreeChildren);
   const treeChildren = useViewerStore((s) => s.treeChildren);
   const currentPath = useViewerStore((s) => s.currentPath);
   const loadDirectory = useViewerStore((s) => s.loadDirectory);
   const isArchive = entry.isArchive ?? isArchivePath(entry.path);
+  // data fetching still uses raw path
   const treeLookupPath = isArchive ? entry.path + '!' : entry.path;
   const children = treeChildren[treeLookupPath] ?? [];
   const hasChildren = children.length > 0;
@@ -51,16 +55,16 @@ function TreeItem({
     e.stopPropagation();
     if (isArchive) {
       loadDirectory(entry.path);
-      toggleExpand(entry.path);
+      toggleExpand(nodeKey);
       return;
     }
     if (!childrenLoaded) await ensureTreeChildren(entry.path);
-    toggleExpand(entry.path);
+    toggleExpand(nodeKey);
   };
 
   const handleClick = () => {
     loadDirectory(entry.path);
-    if (isArchive) toggleExpand(entry.path);
+    if (isArchive) toggleExpand(nodeKey);
   };
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -78,12 +82,13 @@ function TreeItem({
 
   const handleExpandFromMenu = useCallback(async () => {
     if (!childrenLoaded) await ensureTreeChildren(entry.path);
-    toggleExpand(entry.path);
-  }, [childrenLoaded, ensureTreeChildren, entry.path, toggleExpand]);
+    toggleExpand(nodeKey);
+  }, [childrenLoaded, ensureTreeChildren, entry.path, nodeKey, toggleExpand]);
 
   return (
     <div className="tree-item-wrap">
       <div
+        id={isSelected ? "active-tree-node" : undefined}
         ref={itemRef}
         className={`tree-item ${isSelected ? 'selected' : ''}`}
         style={{ paddingLeft: depth === 0 ? 8 : 4 }}
@@ -116,10 +121,11 @@ function TreeItem({
         isExpandable &&
         children.map((c) => (
           <TreeItem
-            key={c.path}
+            key={`${prefix}-${c.path}`}
             entry={c}
             depth={depth + 1}
             isSelected={currentPath === c.path}
+            prefix={prefix}
           />
         ))}
     </div>
@@ -136,8 +142,10 @@ function TreeRootItem({ root }: { root: { name: string; path: string } }) {
   const childrenLoaded = root.path in treeChildren;
   const hasChildren = root.path === 'pc' ? true : children.length > 0;
   const isExpandable = root.path === 'pc' || !childrenLoaded || hasChildren;
-  const expanded = useViewerStore((s) => s.expandedPaths[root.path]);
   const isVirtual = root.path === 'pc';
+  const prefix = isVirtual ? 'pc' : 'special';
+  const nodeKey = `${prefix}-${root.path}`;
+  const expanded = useViewerStore((s) => s.expandedPaths[nodeKey]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const itemRef = useRef<HTMLDivElement>(null);
@@ -145,17 +153,18 @@ function TreeRootItem({ root }: { root: { name: string; path: string } }) {
   useEffect(() => {
     if (isSelected && itemRef.current) {
       const el = itemRef.current;
-      requestAnimationFrame(() => {
+      setTimeout(() => {
         if (el.isConnected) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-      });
+      }, 150);
     }
   }, [isSelected]);
 
   return (
     <div className="tree-item-wrap">
       <div
+        id={isSelected ? "active-tree-node" : undefined}
         ref={itemRef}
         className={`tree-item ${isSelected ? 'selected' : ''}`}
         style={{ paddingLeft: 8 }}
@@ -175,7 +184,7 @@ function TreeRootItem({ root }: { root: { name: string; path: string } }) {
               ? async (e: React.MouseEvent) => {
                 e.stopPropagation();
                 if (!(root.path in treeChildren)) await ensureTreeChildren(root.path);
-                toggleExpand(root.path);
+                toggleExpand(nodeKey);
               }
               : undefined
           }
@@ -199,7 +208,7 @@ function TreeRootItem({ root }: { root: { name: string; path: string } }) {
           isVirtual={false}
           onExpand={async () => {
             if (!(root.path in treeChildren)) await ensureTreeChildren(root.path);
-            toggleExpand(root.path);
+            toggleExpand(nodeKey);
           }}
           onClose={() => setContextMenu(null)}
         />
@@ -208,10 +217,11 @@ function TreeRootItem({ root }: { root: { name: string; path: string } }) {
         isExpandable &&
         children.map((c) => (
           <TreeItem
-            key={c.path}
+            key={`${prefix}-${c.path}`}
             entry={c}
             depth={0}
             isSelected={currentPath === c.path}
+            prefix={prefix}
           />
         ))}
     </div>
@@ -246,10 +256,11 @@ function FavoritesRootItem() {
       {expanded &&
         favorites.map((fav) => (
           <TreeItem
-            key={fav.path}
+            key={`favorite-${fav.path}`}
             entry={{ name: fav.name, path: fav.path, isDirectory: true }}
             depth={1}
             isSelected={currentPath === fav.path}
+            prefix="favorite"
           />
         ))}
     </div>

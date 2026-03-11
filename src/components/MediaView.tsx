@@ -133,8 +133,9 @@ export const MediaView = memo(() => {
       {!entry ? (
         <div className="media-view-placeholder">画像・動画・音楽を選択してください</div>
       ) : mediaType === 'audio' ? (
-        <div className="media-audio-wrap" key={`audio-${entry.path}`}>
+        <div className="media-audio-wrap" key={`audio-wrap-${entry.path}-${mediaBlobUrl}`}>
           <audio
+            key={`audio-${entry.path}-${mediaBlobUrl}`}
             ref={audioRef}
             src={mediaBlobUrl ?? undefined}
             controls
@@ -148,8 +149,9 @@ export const MediaView = memo(() => {
           <span className="media-audio-filename">{entry.name}</span>
         </div>
       ) : mediaType === 'video' ? (
-        <div className="media-video-wrap" key={`video-${entry.path}`} style={{ width: '100%', height: '100%' }}>
+        <div className="media-video-wrap" key={`video-wrap-${entry.path}-${mediaBlobUrl}`} style={{ width: '100%', height: '100%' }}>
           <video
+            key={`video-${entry.path}-${mediaBlobUrl}`}
             ref={videoRef}
             src={mediaBlobUrl ?? undefined}
             controls
@@ -162,7 +164,7 @@ export const MediaView = memo(() => {
           />
         </div>
       ) : (
-        <div className="media-image-wrap" key={`image-${entry.path}`} style={{ width: '100%', height: '100%' }}>
+        <div className="media-image-wrap" key={`image-wrap-${entry.path}`} style={{ width: '100%', height: '100%' }}>
           <ImageView
             srcs={imageSrcs}
             alt={entry.name}

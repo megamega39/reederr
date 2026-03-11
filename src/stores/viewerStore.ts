@@ -289,7 +289,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
 
     const sepIdx = Math.max(resolvedPath.lastIndexOf('/'), resolvedPath.lastIndexOf('\\'));
     if (sepIdx > 0) {
-      // Don't reveal parent if the current path is already a root node (Desktop, Downloads, or Favorite)
+      // Don't reveal parent if the current path is already an exact root node
       const isRootNode = get().treeRoots.some(r => r.path === resolvedPath) ||
         get().favorites.some(f => f.path === resolvedPath);
       if (!isRootNode) {
@@ -593,55 +593,11 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   },
 
   goPrev: () => {
-    const { wrapNavigation, imageEntries, selectedPath, imageDimensions } = get();
-    const sorted = getSortedEntries(imageEntries);
-    const len = sorted.length;
-    if (len === 0) return;
-    const curIdx = sorted.findIndex((e) => e.path === selectedPath);
-    if (curIdx <= 0) {
-      if (wrapNavigation) get().move(-1);
-      return;
-    }
-
-    // Logic to calculate previous step size purely in memory
-    // (Mimics getVisibleEntries logic without triggering state updates)
-    const getVisibleCountAt = (idx: number) => {
-      const { viewMode, autoSpreadCover } = useLayoutStore.getState();
-      if (idx < 0 || idx >= sorted.length) return 0;
-      let isDouble = false;
-      const hasNext = idx + 1 < sorted.length;
-      if (viewMode === 'spread') {
-        isDouble = hasNext;
-      } else if (viewMode === 'auto') {
-        if (idx === 0 && autoSpreadCover) isDouble = false;
-        else {
-          const dims = imageDimensions[sorted[idx].path];
-          if (dims && dims.w > dims.h) isDouble = false;
-          else if (hasNext) {
-            const nextDims = imageDimensions[sorted[idx + 1].path];
-            isDouble = !nextDims || nextDims.h >= nextDims.w;
-          }
-        }
-      }
-      return isDouble ? 2 : 1;
-    };
-
-    let index = 0;
-    let prevGroupStart = 0;
-    while (index < curIdx) {
-      prevGroupStart = index;
-      index += getVisibleCountAt(index);
-    }
-
-    const targetIdx = prevGroupStart;
-    const entry = sorted[targetIdx];
-    get().setSelectedPath(entry.path);
-    get().loadMedia(entry.path);
+    get().move(-1);
   },
 
   goNext: () => {
-    const count = get().getVisibleEntries().length;
-    get().move(count);
+    get().move(1);
   },
 
   selectedEntry: () => {
@@ -716,15 +672,16 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
 
     // 1. Collect all possible "Root" candidates from treeRoots and favorites
     // We filter for results that have a physical path
+    // We add a "type" to properly enforce Priority: Favorite > Special
     const candidates = [
-      ...treeRoots.filter(r => r.path !== 'pc'),
-      ...favorites.map(f => ({ name: f.name, path: f.path }))
+      ...favorites.map(f => ({ name: f.name, path: f.path, type: 'favorite' })),
+      ...treeRoots.filter(r => r.path !== 'pc').map(r => ({ name: r.name, path: r.path, type: 'special' }))
     ];
 
     // 2. Longest Prefix Match
     // Normalize paths for comparison (optional but good for stability)
     const normPath = path.toLowerCase().replace(/\\/g, '/');
-    let bestMatch: { name: string, path: string } | null = null;
+    let bestMatch: { name: string, path: string, type: string } | null = null;
 
     for (const cand of candidates) {
       const normCand = cand.path.toLowerCase().replace(/\\/g, '/');
@@ -734,42 +691,58 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       if (normPath === normCand || normPath.startsWith(normCandWithSlash)) {
         if (!bestMatch || cand.path.length > bestMatch.path.length) {
           bestMatch = cand;
+        } else if (cand.path.length === bestMatch.path.length && cand.type === 'favorite') {
+          // If equal length, prefer favorite type over special type
+          bestMatch = cand;
         }
       }
     }
 
     let ancestors: string[] = [];
-    let remainingPath = '';
 
     if (bestMatch) {
-      console.log('[Persistence] Reveal starting from special root:', bestMatch.name, bestMatch.path);
-      ancestors.push(bestMatch.path);
-      remainingPath = path.slice(bestMatch.path.length);
+      console.log('[Persistence] Reveal starting from special/favorite root:', bestMatch.name, bestMatch.path);
+      const prefix = bestMatch.type === 'favorite' ? 'favorite' : 'special';
+      ancestors.push(`${prefix}-${bestMatch.path}`);
+
+      // We only process the remaining path, appending it to bestMatch.path
+      const remainingPath = path.slice(bestMatch.path.length);
+      if (remainingPath) {
+        const parts = remainingPath.split(/([/\\]|!)/).filter(p => p !== '');
+        let current = bestMatch.path;
+        for (const part of parts) {
+          current += part;
+          const isSeparator = part === '\\' || part === '/' || part === '!';
+          if (!isSeparator && current !== bestMatch.path) {
+            ancestors.push(`${prefix}-${current}`);
+          }
+        }
+      }
     } else {
       // Fallback to PC root for absolute paths
       if (path.includes(':') || path.startsWith('\\') || path.startsWith('/')) {
         console.log('[Persistence] Reveal starting from PC root');
-        ancestors.push('pc');
-        remainingPath = path;
+        ancestors.push('pc-pc');
+        const parts = path.split(/([/\\]|!)/).filter(p => p !== '');
+        let current = '';
+        for (const part of parts) {
+          current += part;
+          const isSeparator = part === '\\' || part === '/' || part === '!';
+          const isDriveRoot = /^[a-zA-Z]:[/\\]$/.test(current);
+          
+          if (isDriveRoot) {
+            ancestors.push(`pc-${current}`);
+          } else if (!isSeparator) {
+            ancestors.push(`pc-${current}`);
+          }
+        }
       } else {
         return; // Relative path or unknown
       }
     }
 
-    // 3. Drill down through the remaining relative path
-    if (remainingPath) {
-      const parts = remainingPath.split(/([/\\]|!)/).filter(p => p !== '');
-      let current = bestMatch ? bestMatch.path : '';
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        current += part;
-        if (part === '\\' || part === '/' || part === '!') {
-          ancestors.push(current);
-        } else if (i === parts.length - 1) {
-          ancestors.push(current);
-        }
-      }
-    }
+    // Deduplicate ancestors sequentially
+    ancestors = Array.from(new Set(ancestors));
 
     console.log('[Persistence] Revealing path ancestors:', ancestors);
 
