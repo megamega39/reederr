@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, statSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { extractToTemp } from './vfs/sevenZip';
+import { splitArchivePath } from './vfs/utils';
 
 const MEDIA_ID_PREFIX = 'm';
 let mediaIdCounter = 0;
@@ -70,10 +71,10 @@ export async function getMediaUrl(
   vpath: string,
   _options?: { rawId?: boolean }
 ): Promise<string> {
-  const sepIdx = vpath.indexOf('!');
-  if (sepIdx >= 0) {
-    const archivePath = vpath.slice(0, sepIdx);
-    const innerPath = vpath.slice(sepIdx + 1);
+  const split = splitArchivePath(vpath);
+  if (split) {
+    const archivePath = split[0];
+    const innerPath = split[1];
     if (!archivePath || !innerPath || !existsSync(archivePath)) {
       throw new Error('Archive or path not found');
     }
@@ -86,6 +87,19 @@ export async function getMediaUrl(
       if (idx >= 0) accessOrder.splice(idx, 1);
       accessOrder.push(cacheKey);
       return _options?.rawId ? cached.mediaId : `media://${cached.mediaId}`;
+    }
+
+    const lowerInner = innerPath.toLowerCase();
+    const isVideo = ['.mp4', '.webm', '.avi', '.mkv', '.mov', '.wmv', '.m4v'].some(ext => lowerInner.endsWith(ext));
+    const isAudio = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'].some(ext => lowerInner.endsWith(ext));
+
+    // 動画以外は VFS ストリーミングを優先（ただし ZIP/RAR のみ）
+    // RAR は現状ストリーミング未対応なので除外
+    // また巨大ファイル（200MB超）も一応抽出を検討するが、画像ならストリーミングで良い
+    if (!isVideo && !isRarArchive(archivePath)) {
+      const id = `${MEDIA_ID_PREFIX}v${++mediaIdCounter}-${Date.now()}`;
+      mediaPathMap.set(id, vpath); // Virtual path (with !)
+      return _options?.rawId ? id : `media://${id}`;
     }
 
     if (isRarArchive(archivePath)) {

@@ -2,6 +2,7 @@ import { useState, useRef, memo } from 'react';
 import { ArrowLeft, ArrowRight, CornerLeftUp, RefreshCw, ChevronDown } from 'lucide-react';
 import { useViewerStore } from '../stores/viewerStore';
 import { HistoryDropdown } from './HistoryDropdown';
+import styles from './NavigationBar.module.css';
 
 export const NavigationBar = memo(() => {
     const {
@@ -25,20 +26,20 @@ export const NavigationBar = memo(() => {
     ) || currentPath.endsWith('!');
 
     return (
-        <div className="navigation-bar">
-            <div className="nav-group">
-                <div className="nav-item-with-menu" ref={backBtnRef}>
+        <div className={styles.navigationBar}>
+            <div className={styles.navGroup}>
+                <div className={styles.itemWithMenu} ref={backBtnRef}>
                     <button
-                        className="nav-btn nav-btn-back"
+                        className={styles.navBtn}
                         onClick={goBack}
                         disabled={!canGoBack()}
                         title="戻る (Alt+←)"
                     >
                         <ArrowLeft size={20} />
-                        <span className="nav-btn-text">戻る</span>
+                        <span className={styles.navBtnText}>戻る</span>
                     </button>
                     <button
-                        className="nav-dropdown-btn"
+                        className={styles.dropdownBtn}
                         title="履歴"
                         onClick={() => setBackMenuOpen(!backMenuOpen)}
                     >
@@ -46,9 +47,9 @@ export const NavigationBar = memo(() => {
                     </button>
                 </div>
 
-                <div className="nav-item-with-menu" ref={forwardBtnRef}>
+                <div className={styles.itemWithMenu} ref={forwardBtnRef}>
                     <button
-                        className="nav-btn"
+                        className={styles.navBtn}
                         onClick={goForward}
                         disabled={!canGoForward()}
                         title="進む (Alt+→)"
@@ -56,7 +57,7 @@ export const NavigationBar = memo(() => {
                         <ArrowRight size={20} />
                     </button>
                     <button
-                        className="nav-dropdown-btn"
+                        className={styles.dropdownBtn}
                         title="履歴"
                         onClick={() => setForwardMenuOpen(!forwardMenuOpen)}
                     >
@@ -65,17 +66,17 @@ export const NavigationBar = memo(() => {
                 </div>
 
                 <button
-                    className="nav-btn"
+                    className={styles.navBtn}
                     onClick={goUp}
                     disabled={isRoot}
                     title="一つ上のフォルダへ (Alt+↑)"
                 >
                     <CornerLeftUp size={20} />
-                    <span className="nav-btn-hint-text">フォルダ</span>
+                    <span className={styles.navBtnHintText}>フォルダ</span>
                 </button>
 
                 <button
-                    className="nav-btn"
+                    className={styles.navBtn}
                     onClick={refresh}
                     title="更新 (F5)"
                 >

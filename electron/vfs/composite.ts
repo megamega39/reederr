@@ -1,13 +1,14 @@
 import * as localFS from './localFS';
-import { isArchiveListingPath, listArchiveDirectory, readFileFromArchive } from './archiveFS';
+import { isArchiveListingPath, listArchiveDirectory, readFileFromArchive, streamFileFromArchive, statFromArchive } from './archiveFS';
 import { isRarListingPath, rarList, rarReadFile, rarStat } from './rarFS';
 import type { DirectoryEntry, FileStats } from './types';
 import { splitArchivePath } from './utils';
+import { Readable } from 'node:stream';
+import { createReadStream } from 'node:fs';
 
-const ARCHIVE_EXT = ['.zip', '.cbz', '.rar', '.cbr'];
+const ARCHIVE_EXT = ['.zip', '.cbz', '.rar', '.cbr', '.7z', '.7zip', '.tar', '.gz', '.bz2', '.xz', '.iso', '.lzh', '.lha', '.lzma'];
 
 function isRarPath(path: string): boolean {
-  if (!path.includes('!')) return false;
   const split = splitArchivePath(path);
   if (!split) return false;
   const archivePart = split[0];
@@ -50,7 +51,7 @@ export async function listDirectory(
     console.error('[Reederr VFS] BUG: LocalFS.list called with archive path (archive not opened correctly):', path);
     throw new Error(`アーカイブは開けていません。パスを zip! 形式で指定してください: ${path}`);
   }
-  return Promise.resolve(localFS.listDirectory(path));
+  return localFS.listDirectory(path);
 }
 
 export async function readFile(path: string): Promise<ArrayBuffer> {
@@ -59,14 +60,25 @@ export async function readFile(path: string): Promise<ArrayBuffer> {
     if (isRarPath(path)) return rarReadFile(path);
     return readFileFromArchive(path);
   }
-  return Promise.resolve(localFS.readFile(path));
+  return localFS.readFile(path);
 }
 
 export async function stat(path: string): Promise<FileStats | null> {
   const split = splitArchivePath(path);
   if (split) {
     if (isRarPath(path)) return rarStat(path);
-    return null;
+    return await statFromArchive(path);
   }
-  return Promise.resolve(localFS.stat(path));
+  return localFS.stat(path);
+}
+
+export function streamFile(path: string): Readable {
+  const split = splitArchivePath(path);
+  if (split) {
+    if (isRarPath(path)) {
+      throw new Error('RAR streaming is not yet supported');
+    }
+    return streamFileFromArchive(path);
+  }
+  return createReadStream(path);
 }

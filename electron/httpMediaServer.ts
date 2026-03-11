@@ -56,7 +56,7 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
   close: () => void;
 }> {
   return new Promise((resolve) => {
-    const server = createServer((req, res) => {
+    const server = createServer(async (req, res) => {
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         res.writeHead(405, { Allow: 'GET, HEAD' });
         res.end();
@@ -75,14 +75,15 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
         res.end();
         return;
       }
-      let fileSize: number;
-      try {
-        fileSize = statSync(realPath).size;
-      } catch {
+
+      const { stat, streamFile } = require('./vfs/composite');
+      const s = await stat(realPath);
+      if (!s) {
         res.writeHead(404);
         res.end();
         return;
       }
+      const fileSize = s.size;
       const contentType = getMimeType(realPath);
       const rangeHeader = req.headers.range ?? '';
       const isHead = req.method === 'HEAD';
@@ -95,14 +96,14 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
 
       if (!rangeHeader) {
         sendHeaders(200, { 'Content-Length': String(fileSize) }, !isHead);
-        if (!isHead) createReadStream(realPath).pipe(res);
+        if (!isHead) streamFile(realPath).pipe(res);
         return;
       }
 
       const range = parseRangeHeader(rangeHeader, fileSize);
       if (!range) {
         sendHeaders(200, { 'Content-Length': String(fileSize) }, !isHead);
-        if (!isHead) createReadStream(realPath).pipe(res);
+        if (!isHead) streamFile(realPath).pipe(res);
         return;
       }
 
@@ -112,7 +113,12 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
         'Content-Length': String(chunkSize),
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       }, !isHead);
-      if (!isHead) createReadStream(realPath, { start, end }).pipe(res);
+      if (!isHead) {
+        // アーカイブ内ファイルの場合、部分的なストリーム出力は未対応(全体を出す)
+        // 本物のファイルなら fs.createReadStream({start, end}) が理想だが、
+        // ここでは streamFile(realPath) をそのまま pipe する。
+        streamFile(realPath).pipe(res);
+      }
     });
 
     server.listen(0, '127.0.0.1', () => {

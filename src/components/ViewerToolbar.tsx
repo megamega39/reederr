@@ -14,12 +14,13 @@ import {
     Monitor,
     ArrowRightLeft,
     Repeat,
-    Wand2
+    Wand2,
 } from 'lucide-react';
 import { memo } from 'react';
 import { useViewerStore } from '../stores/viewerStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
+import styles from './ViewerToolbar.module.css';
 
 export const ViewerToolbar = memo(() => {
     const {
@@ -65,54 +66,54 @@ export const ViewerToolbar = memo(() => {
     const pageText = total > 0 ? `${currentIndex + 1} / ${total}` : '0 / 0';
 
     return (
-        <div className="viewer-toolbar">
-            <div className="viewer-toolbar-group left">
-                <button onClick={goToFirst} title="最初のページへ" className="toolbar-btn">
+        <div className={styles.toolbar}>
+            <div className={`${styles.btnGroup} ${styles.left}`}>
+                <button onClick={goToFirst} title="最初のページへ" className={styles.btn}>
                     <ChevronsLeft size={18} />
                 </button>
-                <button onClick={goPrev} title="前のページへ" className="toolbar-btn">
+                <button onClick={goPrev} title="前のページへ" className={styles.btn}>
                     <ChevronLeft size={18} />
                 </button>
 
-                <div className="viewer-toolbar-page-count">
+                <div className={styles.pos}>
                     {pageText}
                 </div>
 
-                <button onClick={goNext} title="次のページへ" className="toolbar-btn">
+                <button onClick={goNext} title="次のページへ" className={styles.btn}>
                     <ChevronRight size={18} />
                 </button>
-                <button onClick={goToLast} title="最後のページへ" className="toolbar-btn">
+                <button onClick={goToLast} title="最後のページへ" className={styles.btn}>
                     <ChevronsRight size={18} />
                 </button>
 
-                <span className="toolbar-sep" />
+                <div className={styles.sep} />
 
                 <button
                     onClick={() => setSlideshowActive(!slideshowActive)}
                     title="スライドショー"
-                    className={`toolbar-btn ${slideshowActive ? 'active' : ''}`}
+                    className={`${styles.btn} ${slideshowActive ? styles.btnActive : ''}`}
                 >
                     <Clock size={18} />
                 </button>
 
                 {(mediaType === 'video' || mediaType === 'audio') && (
                     <>
-                        <span className="toolbar-sep" />
+                        <div className={styles.sep} />
                         <button
                             onClick={toggleLoop}
                             title="ループ再生"
-                            className={`toolbar-btn ${loopEnabled ? 'active' : ''}`}
+                            className={`${styles.btn} ${loopEnabled ? styles.btnActive : ''}`}
                         >
                             <Repeat size={18} />
                         </button>
-                        <div className="toolbar-speed-selector">
+                        <div className={styles.speedSelector}>
                             <select
                                 value={SPEED_OPTIONS.includes(playbackRate) ? String(playbackRate) : 'custom'}
                                 onChange={(e) => {
                                     const v = e.target.value;
                                     if (v !== 'custom') setPlaybackRate(parseFloat(v));
                                 }}
-                                className="toolbar-select"
+                                className={styles.select}
                                 title="再生速度"
                             >
                                 {SPEED_OPTIONS.map((s) => (
@@ -129,62 +130,65 @@ export const ViewerToolbar = memo(() => {
                 )}
             </div>
 
-            <div className="viewer-toolbar-group right">
+            <div className={`${styles.btnGroup} ${styles.center}`}>
+            </div>
+
+            <div className={`${styles.btnGroup} ${styles.right}`}>
                 {/* スケーリング */}
                 <button
                     onClick={() => setScaleMode('fit-window')}
                     title="ウィンドウに合わせる"
-                    className={`toolbar-btn ${scaleMode === 'fit-window' ? 'active' : ''}`}
+                    className={`${styles.btn} ${scaleMode === 'fit-window' ? styles.btnActive : ''}`}
                 >
                     <Maximize size={18} />
                 </button>
                 <button
                     onClick={() => setScaleMode('fit-width')}
                     title="幅に合わせる"
-                    className={`toolbar-btn ${scaleMode === 'fit-width' ? 'active' : ''}`}
+                    className={`${styles.btn} ${scaleMode === 'fit-width' ? styles.btnActive : ''}`}
                 >
                     <StretchHorizontal size={18} />
                 </button>
                 <button
                     onClick={() => setScaleMode('fit-height')}
                     title="高さに合わせる"
-                    className={`toolbar-btn ${scaleMode === 'fit-height' ? 'active' : ''}`}
+                    className={`${styles.btn} ${scaleMode === 'fit-height' ? styles.btnActive : ''}`}
                 >
                     <StretchVertical size={18} />
                 </button>
                 <button
                     onClick={() => setScaleMode('original')}
                     title="原寸大"
-                    className={`toolbar-btn ${scaleMode === 'original' ? 'active' : ''}`}
+                    className={`${styles.btn} ${scaleMode === 'original' ? styles.btnActive : ''}`}
                 >
                     <Maximize2 size={18} />
                 </button>
 
-                <span className="toolbar-sep" />
+                <div className={styles.sep} />
 
                 {/* レイアウト */}
                 <button
                     onClick={() => setViewMode(viewMode === 'single' ? 'spread' : 'single')}
                     title={viewMode === 'single' ? '見開き表示' : '単独表示'}
-                    className="toolbar-btn"
+                    className={styles.btn}
                 >
                     {viewMode === 'single' ? <BookOpen size={18} /> : <Book size={18} />}
                 </button>
                 <button
                     onClick={() => setBinding(binding === 'rtl' ? 'ltr' : 'rtl')}
                     title={binding === 'rtl' ? '左開き' : '右開き'}
-                    className="toolbar-btn"
+                    className={styles.btn}
                 >
                     <ArrowRightLeft size={18} />
                 </button>
 
-                <span className="toolbar-sep" />
+                <div className={styles.sep} />
 
                 {/* 自動見開き (Auto) */}
                 <button
                     onClick={() => setViewMode('auto')}
                     title="自動見開き (Auto Spread)"
-                    className={`toolbar-btn ${viewMode === 'auto' ? 'active' : ''}`}
+                    className={`${styles.btn} ${viewMode === 'auto' ? styles.btnActive : ''}`}
                 >
                     <Wand2 size={18} />
                 </button>
@@ -193,7 +197,7 @@ export const ViewerToolbar = memo(() => {
                     <button
                         onClick={() => setAutoSpreadCover(!autoSpreadCover)}
                         title={`表紙（1ページ目）の単独表示: ${autoSpreadCover ? 'ON' : 'OFF'}`}
-                        className={`toolbar-btn ${autoSpreadCover ? 'active' : ''}`}
+                        className={`${styles.btn} ${autoSpreadCover ? styles.btnActive : ''}`}
                     >
                         <Book size={18} />
                     </button>
@@ -203,7 +207,7 @@ export const ViewerToolbar = memo(() => {
                 <button
                     onClick={() => setViewMode('single')}
                     title="単ページ表示"
-                    className={`toolbar-btn ${viewMode === 'single' ? 'active' : ''}`}
+                    className={`${styles.btn} ${viewMode === 'single' ? styles.btnActive : ''}`}
                 >
                     <Book size={18} />
                 </button>
@@ -211,18 +215,18 @@ export const ViewerToolbar = memo(() => {
                 <button
                     onClick={() => setViewMode('spread')}
                     title="見開き表示"
-                    className={`toolbar-btn ${viewMode === 'spread' ? 'active' : ''}`}
+                    className={`${styles.btn} ${viewMode === 'spread' ? styles.btnActive : ''}`}
                 >
                     <BookOpen size={18} />
                 </button>
 
-                <span className="toolbar-sep" />
+                <div className={styles.sep} />
 
                 {/* サムネイル */}
                 <button
                     onClick={() => setCatalogMode(!catalogMode)}
                     title="カタログモード"
-                    className={`toolbar-btn ${catalogMode ? 'active' : ''}`}
+                    className={`${styles.btn} ${catalogMode ? styles.btnActive : ''}`}
                 >
                     <Grid size={18} />
                 </button>
@@ -231,7 +235,7 @@ export const ViewerToolbar = memo(() => {
                 <button
                     onClick={togglePreviewFullscreen}
                     title="全画面"
-                    className="toolbar-btn"
+                    className={styles.btn}
                 >
                     <Monitor size={18} />
                 </button>

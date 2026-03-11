@@ -5,6 +5,7 @@ export interface ReederrAPI {
   getSpecialFolders: () => Promise<Array<{ name: string; path: string }>>;
   getDrives: () => Promise<Array<{ name: string; path: string }>>;
   selectFolder: () => Promise<{ path: string } | null>;
+  selectFile: () => Promise<{ path: string } | null>;
   listDirectory: (path: string, options?: { recursive?: boolean }) => Promise<
     | { success: true; files: Array<{ name: string; path: string; isDirectory: boolean; isArchive: boolean; size?: number; mtime?: number }> }
     | { success: false; error: string; files: [] }
@@ -43,6 +44,8 @@ export interface ReederrAPI {
   onMenuZoom: (cb: (action: string) => void) => () => void;
   loadStore: () => Promise<Record<string, unknown>>;
   saveStore: (data: Record<string, unknown>) => Promise<void>;
+  openWithApp: (path: string, appPath: string) => Promise<{ ok: boolean; error?: string }>;
+  onShowToast: (cb: (message: string, type: 'info' | 'success' | 'warn' | 'error', duration?: number) => void) => () => void;
 }
 
 const api: ReederrAPI = {
@@ -51,6 +54,7 @@ const api: ReederrAPI = {
   getSpecialFolders: () => ipcRenderer.invoke('get-special-folders'),
   getDrives: () => ipcRenderer.invoke('get-drives'),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
+  selectFile: () => ipcRenderer.invoke('select-file'),
   listDirectory: (path, options) =>
     ipcRenderer.invoke('list-directory', { path, recursive: options?.recursive }),
   readFile: (path) => ipcRenderer.invoke('read-file', { path }),
@@ -75,6 +79,7 @@ const api: ReederrAPI = {
   },
   getUserSettings: () => ipcRenderer.invoke('get-user-settings'),
   setUserSettings: (data) => ipcRenderer.invoke('set-user-settings', { data }),
+  openWithApp: (path, appPath) => ipcRenderer.invoke('open-with-app', { path, appPath }),
   is7zAvailable: () => ipcRenderer.invoke('is-7z-available'),
   onMenuNav: (cb) => {
     const fn = (_: unknown, a: string) => cb(a);
@@ -123,6 +128,11 @@ const api: ReederrAPI = {
   },
   loadStore: () => ipcRenderer.invoke('load-store').catch(e => { console.error('[Preload] loadStore error:', e); throw e; }),
   saveStore: (data) => ipcRenderer.invoke('save-store', { data }).catch(e => { console.error('[Preload] saveStore error:', e); throw e; }),
+  onShowToast: (cb) => {
+    const fn = (_: unknown, m: string, t: 'info' | 'success' | 'warn' | 'error', d?: number) => cb(m, t, d);
+    ipcRenderer.on('show-toast', fn);
+    return () => ipcRenderer.removeListener('show-toast', fn);
+  },
 };
 
 contextBridge.exposeInMainWorld('reederr', api);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FileSystemAPI } from '../services/api';
 
 /** key = absPath + '@' + size でキャッシュ（main側と同等） */
 const iconCache = new Map<string, string>();
@@ -28,7 +29,7 @@ export function FileIcon({
   );
 
   useEffect(() => {
-    if (!path || !window.reederr?.getFileIcon) return;
+    if (!path || !FileSystemAPI.getFileIcon) return;
     const key = getCacheKey(path, iconSizeNum);
     const cached = iconCache.get(key);
     if (cached) {
@@ -36,7 +37,7 @@ export function FileIcon({
       return;
     }
     let cancelled = false;
-    window.reederr
+    FileSystemAPI
       .getFileIcon(path, iconSizeNum)
       .then((url) => {
         if (!cancelled && url) {

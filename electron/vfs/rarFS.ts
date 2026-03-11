@@ -127,12 +127,12 @@ export function cleanupTempExtract(): void {
 }
 
 export function isRarListingPath(path: string): boolean {
-  if (!path.includes('!')) {
+  const split = splitArchivePath(path);
+  if (!split) {
     return existsSync(path) && isRarArchive(path);
   }
-  const parsed = parseVpath(path);
-  if (!parsed) return false;
-  return existsSync(parsed.archivePath) && isRarArchive(parsed.archivePath);
+  const archivePath = split[0];
+  return existsSync(archivePath) && isRarArchive(archivePath);
 }
 
 /**

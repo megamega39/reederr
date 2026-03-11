@@ -3,6 +3,8 @@ import { useViewerStore } from '../stores/viewerStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
 import { ImageView } from './ImageView';
+import { MediaAPI } from '../services/api';
+import styles from './MediaView.module.css';
 
 function applyMediaProps(
   el: HTMLMediaElement | null,
@@ -23,7 +25,8 @@ export const MediaView = memo(() => {
   const mediaType = useViewerStore((s) => s.mediaType);
   const selectedEntry = useViewerStore((s) => s.selectedEntry);
   const getVisibleEntries = useViewerStore((s) => s.getVisibleEntries);
-  const goPrev = useViewerStore((s) => s.goPrev);
+  const goPrevPage = useViewerStore((s) => s.goPrevPage);
+  const goNextPage = useViewerStore((s) => s.goNextPage);
   const goNext = useViewerStore((s) => s.goNext);
   const nextEntry = useViewerStore((s) => s.nextEntry);
   const setImageDimensions = useViewerStore((s) => s.setImageDimensions);
@@ -69,16 +72,16 @@ export const MediaView = memo(() => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        goPrev();
+        goPrevPage();
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        goNext();
+        goNextPage();
       } else if (e.key === ' ' || e.key === 'Spacebar') {
         e.preventDefault();
-        goNext();
+        goNextPage();
       } else if (e.key === 'Backspace') {
         e.preventDefault();
-        goPrev();
+        goPrevPage();
       } else if (e.key === 'l' || e.key === 'L') {
         if (!e.ctrlKey && !e.metaKey && !e.altKey) {
           e.preventDefault();
@@ -97,21 +100,21 @@ export const MediaView = memo(() => {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [goPrev, goNext, toggleLoop, changePlaybackRate, resetPlaybackRate]);
+  }, [goPrevPage, goNextPage, toggleLoop, changePlaybackRate, resetPlaybackRate]);
 
   const entry = selectedEntry();
 
   if (!entry) {
     return (
-      <div className="media-view empty">
-        <div className="media-view-placeholder">画像・動画・音楽を選択してください</div>
+      <div className={`${styles.mediaView} ${styles.empty}`}>
+        <div className={styles.placeholder}>画像・動画・音楽を選択してください</div>
       </div>
     );
   }
 
   const handleToggleFullscreen = () => {
     const next = !isPreviewFullscreen;
-    window.reederr.setPreviewFullscreen(next);
+    MediaAPI.setPreviewFullscreen(next);
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
@@ -129,11 +132,11 @@ export const MediaView = memo(() => {
   const imagePaths = visibleEntries.map((e) => e.path);
 
   return (
-    <div className={`media-view ${!entry ? 'empty' : `media-view--${mediaType}`}`} onDoubleClick={handleDoubleClick}>
+    <div key={entry?.path ?? 'empty'} className={`${styles.mediaView} ${!entry ? styles.empty : styles[`mediaView--${mediaType}`] || ''}`} onDoubleClick={handleDoubleClick}>
       {!entry ? (
-        <div className="media-view-placeholder">画像・動画・音楽を選択してください</div>
+        <div className={styles.placeholder}>画像・動画・音楽を選択してください</div>
       ) : mediaType === 'audio' ? (
-        <div className="media-audio-wrap" key={`audio-wrap-${entry.path}-${mediaBlobUrl}`}>
+        <div className={styles.audioWrap} key={`audio-wrap-${entry.path}-${mediaBlobUrl}`}>
           <audio
             key={`audio-${entry.path}-${mediaBlobUrl}`}
             ref={audioRef}

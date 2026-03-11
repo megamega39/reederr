@@ -24,7 +24,7 @@ export const ImageView = memo(({ srcs, alt, onDimensions, paths }: ImageViewProp
         validSrcs.map((src, i) => {
           const path = paths?.[i] || src;
           // React needs a highly unique key to avoid DOM recycling crashes (removeChild error)
-          const uniqueKey = `${path}-${i}-${src}`;
+          const uniqueKey = `${path}-${src}`;
           return (
             <div key={uniqueKey} className="image-view-page">
               <img
@@ -39,6 +39,9 @@ export const ImageView = memo(({ srcs, alt, onDimensions, paths }: ImageViewProp
                   if (paths?.[i] && onDimensions && w > 0 && h > 0) {
                     onDimensions(paths[i], w, h);
                   }
+                }}
+                onError={() => {
+                  console.error(`[ImageView] Failed to load image: ${path} (src: ${src})`);
                 }}
               />
             </div>

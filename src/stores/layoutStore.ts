@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { PersistenceAPI } from '../services/api';
 
 export type FileListSortBy = 'name' | 'size' | 'type' | 'mtime';
 export type FileListSortOrder = 'asc' | 'desc';
@@ -130,9 +131,9 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   setRestoring: (v) => set({ isRestoring: v }),
 }));
 
-export async function loadLayoutFromStorage(): Promise<void> {
+export const loadLayoutFromStorage = async () => {
   try {
-    const raw = await window.reederr.loadStore();
+    const raw = await PersistenceAPI.loadStore();
     const data = raw[LAYOUT_KEY] as any;
     if (data) {
       console.log('[Persistence] Loaded layout state:', Object.keys(data));
@@ -174,7 +175,7 @@ export function saveLayoutToStorage(): void {
     fileListColMtime,
   } = state;
 
-  const data = {
+  const layoutState = {
     leftPaneWidth,
     folderPaneHeight,
     viewMode,
@@ -192,8 +193,8 @@ export function saveLayoutToStorage(): void {
     fileListColMtime,
   };
 
-  console.log('[Persistence] Saving layout state:', Object.keys(data));
-  window.reederr.saveStore({
-    [LAYOUT_KEY]: data,
+  console.log('[Persistence] Saving layout state:', Object.keys(layoutState));
+  PersistenceAPI.saveStore({
+    [LAYOUT_KEY]: layoutState,
   });
 }

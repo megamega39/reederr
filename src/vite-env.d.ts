@@ -47,6 +47,9 @@ interface ReederrAPI {
   onMenuZoom: (cb: (action: string) => void) => () => void;
   loadStore: () => Promise<Record<string, unknown>>;
   saveStore: (data: Record<string, unknown>) => Promise<void>;
+  openWithApp: (path: string, appPath: string) => Promise<{ ok: boolean; error?: string }>;
+  selectFile: () => Promise<{ path: string } | null>;
+  onShowToast: (cb: (message: string, type: 'info' | 'success' | 'warn' | 'error', duration?: number) => void) => () => void;
 }
 
 interface Window {

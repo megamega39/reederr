@@ -1,30 +1,60 @@
-import { existsSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import type { SevenZipEntry } from './sevenZip';
 import { listArchive } from './sevenZip';
 
-const MAX_CACHE_SIZE = 20;
+const MAX_CACHE_SIZE = 50; // Increased for persistence
+const CACHE_FILENAME = 'archive_index_cache.json';
+let cacheDirPath = '';
+
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.jpe', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif']);
 const VIDEO_EXT = new Set(['.mp4', '.webm', '.avi', '.mkv', '.mov', '.wmv', '.m4v']);
 const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac']);
 const MAX_SINGLE_FILE = 2 * 1024 * 1024 * 1024; // 2GB
-const MAX_TOTAL_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
-
-/** 拡張子は大文字小文字を区別しない */
-function isMediaPath(path: string): boolean {
-  const dotIdx = path.lastIndexOf('.');
-  if (dotIdx < 0) return false;
-  const ext = ('.' + path.slice(dotIdx + 1)).toLowerCase();
-  return IMAGE_EXT.has(ext) || VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext);
-}
 
 interface CacheEntry {
   entries: SevenZipEntry[];
   fetchedAt: number;
 }
 
-const cache = new Map<string, CacheEntry>();
-const accessOrder: string[] = [];
+let cache = new Map<string, CacheEntry>();
+let accessOrder: string[] = [];
+
+/**
+ * 初期化時にメインプロセスから呼び出される
+ */
+export function initArchiveCache(userDataPath: string) {
+  cacheDirPath = userDataPath;
+  loadCacheFromDisk();
+}
+
+function loadCacheFromDisk() {
+  try {
+    const path = join(cacheDirPath, CACHE_FILENAME);
+    if (existsSync(path)) {
+      const data = JSON.parse(readFileSync(path, 'utf-8'));
+      cache = new Map(Object.entries(data.cache));
+      accessOrder = data.order || [];
+      console.log(`[ArchiveCache] Loaded ${cache.size} entries from disk.`);
+    }
+  } catch (err) {
+    console.warn('[ArchiveCache] Failed to load cache from disk:', err);
+  }
+}
+
+function saveCacheToDisk() {
+  if (!cacheDirPath) return;
+  try {
+    const path = join(cacheDirPath, CACHE_FILENAME);
+    const data = {
+      cache: Object.fromEntries(cache),
+      order: accessOrder
+    };
+    writeFileSync(path, JSON.stringify(data), 'utf-8');
+  } catch (err) {
+    console.error('[ArchiveCache] Failed to save cache to disk:', err);
+  }
+}
 
 function makeCacheKey(archivePath: string): string {
   const abs = resolve(archivePath);
@@ -50,11 +80,6 @@ function touch(key: string): void {
   accessOrder.push(key);
 }
 
-/**
- * アーカイブのインデックスを取得（キャッシュ付き）。
- * ディレクトリと全ファイルを返し、サブフォルダ構造を正しく推論できるようにする。
- * メディアの抽出用に isMediaPath でフィルタする必要がある場合は呼び出し側で実施。
- */
 export async function getArchiveIndex(archivePath: string): Promise<SevenZipEntry[]> {
   const key = makeCacheKey(archivePath);
   if (!key) throw new Error('Archive not found');
@@ -77,17 +102,12 @@ export async function getArchiveIndex(archivePath: string): Promise<SevenZipEntr
     filtered.push(e);
   }
 
-  console.log('[Reederr VFS] getArchiveIndex', {
-    archivePath,
-    rawEntriesFrom7z: raw.length,
-    afterFilter: filtered.length,
-    dirs: filtered.filter((e) => e.isDirectory).length,
-    files: filtered.filter((e) => !e.isDirectory).length,
-  });
+  console.log('[ArchiveCache] Fetching from 7z:', archivePath);
 
-  trimCache();
   cache.set(key, { entries: filtered, fetchedAt: Date.now() });
   accessOrder.push(key);
+  trimCache();
+  saveCacheToDisk();
 
   return filtered;
 }

@@ -1,0 +1,141 @@
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border-main);
+  min-height: 38px;
+}
+
+.btnGroup {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.left, .right, .center {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn {
+  padding: 2px 6px;
+  min-width: 28px;
+  height: 24px;
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--border-dark);
+  border-radius: 2px;
+  background: linear-gradient(to bottom, #fff, #e0e0e0);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #333;
+}
+
+.btn:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #f5f5f5, #d5d5d5);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnSm {
+  padding: 2px 8px;
+  font-size: var(--font-size-sm);
+}
+
+.btnActive {
+  background: linear-gradient(to bottom, var(--bg-selection-light), #99c9ff);
+  border-color: var(--bg-selection);
+}
+
+.sep {
+  width: 1px;
+  height: 24px;
+  background: var(--border-main);
+  margin: 0 4px;
+}
+
+.pos {
+  margin-left: 8px;
+  font-size: var(--font-size-base);
+  color: var(--text-muted);
+}
+
+.recursive {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  user-select: none;
+}
+
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.viewMode,
+.binding {
+  display: flex;
+  gap: 2px;
+}
+
+.threshold {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.threshold input[type="range"] {
+  width: 60px;
+}
+
+.thresholdVal {
+  min-width: 32px;
+  font-variant-numeric: tabular-nums;
+}
+
+.speedSelector {
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.select {
+  background: var(--bg-hover);
+  color: var(--text-main);
+  border: 1px solid var(--border-main);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: var(--font-size-base);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.select:hover {
+  background: var(--border-dark);
+  border-color: var(--bg-selection);
+}
+
+.select option {
+  background: var(--bg-tree);
+  color: var(--text-main);
+}

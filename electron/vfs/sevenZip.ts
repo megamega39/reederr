@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { Readable } from 'node:stream';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { platform } from 'node:os';
@@ -343,4 +344,50 @@ export function isMediaRequiringTempExtract(path: string): boolean {
   const videoExt = ['.mp4', '.webm', '.avi', '.mkv', '.mov', '.wmv', '.m4v'];
   const audioExt = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'];
   return videoExt.includes(ext) || audioExt.includes(ext);
+}
+
+/**
+ * 動画/音声向けに 7z x -so でストリームとして抽出。
+ */
+export function extractToStream(archivePath: string, innerPath: string): Readable {
+  rejectZipSlip(innerPath);
+
+  const exe = get7zPath();
+  if (!exe) {
+    throw new Error('7-Zip (7z.exe) not found.');
+  }
+
+  const resolved = resolve(archivePath);
+  const absPath = toLongPathIfNeeded(resolved);
+
+  // -i!path で厳密にファイルを指定
+  const args = ['x', '-so', '-i!' + innerPath, absPath];
+  console.log('[7z Stream Command]: 7z', args.join(' '));
+
+  const proc = spawn(exe, args, {
+    windowsHide: true,
+    shell: false,
+  });
+
+  const stream = proc.stdout;
+
+  proc.stderr?.on('data', (chunk: Buffer) => {
+    const msg = chunk.toString('utf8').toLowerCase();
+    // 実際のエラーメッセージを識別してストリームを破棄
+    if (msg.includes('error') || msg.includes('wrong password') || msg.includes('cannot open')) {
+      stream.destroy(new Error(msg.trim()));
+    }
+  });
+
+  proc.on('error', (err) => {
+    stream.destroy(err);
+  });
+
+  proc.on('close', (code) => {
+    if (code !== 0 && code !== 1 && code !== 2) {
+      stream.destroy(new Error(`7-Zip exited with code ${code}`));
+    }
+  });
+
+  return stream;
 }

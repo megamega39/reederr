@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { useViewerStore } from '../stores/viewerStore';
 import { useLayoutStore } from '../stores/layoutStore';
+import styles from './StatusBar.module.css';
 
 function formatSize(bytes?: number) {
   if (bytes == null) return '';
@@ -22,31 +23,31 @@ export const StatusBar = memo(() => {
   const dims = selectedPath ? imageDimensions[selectedPath] : null;
 
   return (
-    <div className="status-bar">
-      <div className="status-bar-section main">
+    <div className={styles.statusBar}>
+      <div className={`${styles.section} ${styles.main}`}>
         {error ? (
-          <span className="status-bar-error" title={error}>
+          <span className={styles.error} title={error}>
             ⚠ {error}
           </span>
         ) : (
-          <span className="status-bar-path" title={entry?.path}>
+          <span className={styles.path} title={entry?.path}>
             {entry?.path ?? '-'}
           </span>
         )}
       </div>
 
-      <div className="status-bar-section info">
+      <div className={`${styles.section} ${styles.info}`}>
         {dims && (
-          <span className="status-bar-dims">
+          <span className={styles.dims}>
             {dims.w} × {dims.h}
           </span>
         )}
         {entry?.size != null && (
-          <span className="status-bar-size">
+          <span className={styles.size}>
             {formatSize(entry.size)}
           </span>
         )}
-        <span className="status-bar-scale">
+        <span className={styles.scale}>
           {scaleMode === 'fit-window' && 'ウィンドウに合わせる'}
           {scaleMode === 'fit-width' && '幅に合わせる'}
           {scaleMode === 'fit-height' && '高さに合わせる'}
@@ -54,7 +55,7 @@ export const StatusBar = memo(() => {
         </span>
       </div>
 
-      <div className="status-bar-section pos">
+      <div className={`${styles.section} ${styles.pos}`}>
         {pos} / {total}
       </div>
     </div>

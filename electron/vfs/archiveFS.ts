@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
+import { Readable } from 'node:stream';
 import type { DirectoryEntry, FileStats } from './types';
 import { get7zPath } from '../sevenZipPath';
 import { getArchiveIndex } from './archiveIndexCache';
-import { extractToStdout } from './sevenZip';
+import { extractToStdout, extractToStream } from './sevenZip';
 import { splitArchivePath } from './utils';
 
 import { ARCHIVE_EXT_REGEX, isArchiveExtension } from './utils';
@@ -20,9 +21,8 @@ function isArchivePath(path: string): boolean {
 }
 
 export function isArchiveListingPath(path: string): boolean {
-  if (path.includes('!')) {
-    const split = splitArchivePath(path);
-    if (!split) return false;
+  const split = splitArchivePath(path);
+  if (split) {
     const archivePart = split[0];
     return existsSync(archivePart) && isArchivePath(archivePart);
   }
@@ -203,7 +203,34 @@ export async function readFileFromArchive(path: string): Promise<ArrayBuffer> {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
 }
 
-export function statFromArchive(path: string): FileStats | null {
-  // 同期的な stat は ZIP では難しい。必要なら listArchive で事前に情報を持っておく。
-  return null;
+export async function statFromArchive(path: string): Promise<FileStats | null> {
+  const split = splitArchivePath(path);
+  if (!split) return null;
+  const [archivePath, innerPathRaw] = split;
+  const innerPath = innerPathRaw.replace(/\\/g, '/').replace(/^\/+/, '');
+
+  const index = await getArchiveIndex(archivePath);
+  const entry = index.find(e => e.path.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase() === innerPath.toLowerCase());
+  if (!entry) return null;
+
+  return {
+    size: entry.size,
+    isDirectory: entry.isDirectory,
+    mtime: entry.mtime,
+  };
+}
+
+export function streamFileFromArchive(path: string): Readable {
+  const split = splitArchivePath(path);
+  if (!split) {
+    throw new Error('Not an archive path');
+  }
+  const [archivePath, innerPathRaw] = split;
+  const innerPath = innerPathRaw.replace(/\\/g, '/').replace(/^\/+/, '');
+
+  if (isRarArchive(archivePath)) {
+    throw new Error('RAR streaming is not yet implemented in archiveFS');
+  }
+
+  return extractToStream(archivePath, innerPath);
 }

@@ -1,0 +1,87 @@
+.container {
+  position: fixed;
+  bottom: 24px; /* Above status bar plus some padding */
+  right: 16px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  min-width: 240px;
+  max-width: 320px;
+  background: var(--bg-toolbar);
+  border: 1px solid var(--border-main);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+  padding: 8px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  animation: slideIn 0.2s cubic-bezier(0, 0, 0.2, 1);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  color: var(--text-main);
+}
+
+.toast.exit {
+  animation: slideOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.message {
+  flex: 1;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.close {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.close:hover {
+  opacity: 1;
+  color: var(--text-main);
+}
+
+/* Level Specifics */
+.info .icon { color: #2196f3; }
+.success .icon { color: #4caf50; }
+.warn .icon { color: #ff9800; }
+.error .icon { color: #f44336; }
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}

@@ -1,0 +1,55 @@
+.statusBar {
+  flex: 0 0 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: var(--font-size-xs);
+  background: var(--bg-toolbar);
+  border-top: 1px solid var(--border-main);
+  gap: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--text-main);
+}
+
+.section {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  height: 100%;
+}
+
+.main {
+  flex: 1;
+  overflow: hidden;
+  padding-left: 4px;
+}
+
+.info {
+  color: var(--text-muted);
+  border-right: 1px solid var(--border-light);
+  border-left: 1px solid var(--border-light);
+  gap: 15px;
+}
+
+.pos {
+  min-width: 80px;
+  justify-content: center;
+}
+
+.path,
+.error {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error {
+  color: #c00;
+}
+
+.dims,
+.size,
+.scale {
+  /* Minimal spacing if needed */
+}
