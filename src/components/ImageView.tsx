@@ -23,9 +23,12 @@ export const ImageView = memo(({ srcs, alt, onDimensions, paths }: ImageViewProp
       ) : (
         validSrcs.map((src, i) => {
           const path = paths?.[i] || src;
+          // React needs a highly unique key to avoid DOM recycling crashes (removeChild error)
+          const uniqueKey = `${path}-${i}-${src}`;
           return (
-            <div key={path} className="image-view-page">
+            <div key={uniqueKey} className="image-view-page">
               <img
+                key={`img-${uniqueKey}`}
                 src={src}
                 alt={alt}
                 className="image-view-img"
