@@ -72,13 +72,15 @@ export async function stat(path: string): Promise<FileStats | null> {
   return localFS.stat(path);
 }
 
-export function streamFile(path: string): Readable {
+export function streamFile(path: string, options?: { start?: number; end?: number }): Readable {
   const split = splitArchivePath(path);
   if (split) {
     if (isRarPath(path)) {
       throw new Error('RAR streaming is not yet supported');
     }
+    // Note: Archive streaming currently doesn't support ranges, 
+    // it will return the full stream for the inner file.
     return streamFileFromArchive(path);
   }
-  return createReadStream(path);
+  return localFS.streamFile(path, options);
 }

@@ -200,6 +200,8 @@ export function FileList() {
     overscan: 20,
   });
 
+  const lastSelectedIndex = useRef<number>(-1);
+
   // Auto-scroll to selected items (ensures the primary highlighted item is visible)
   useEffect(() => {
     if (!selectedPath) return;
@@ -207,8 +209,22 @@ export function FileList() {
     const idx = sortedEntries.findIndex(e => normalizePath(e.path) === normalizePath(selectedPath));
     if (idx < 0) return;
     
-    // Scroll to the primary selection with alignment 'auto'
-    virtualizer.scrollToIndex(idx, { align: 'auto' });
+    // Proactive "Look-ahead" scrolling: 
+    // If moving Down, ensure several items below are visible.
+    // If moving Up, ensure several items above are visible.
+    const SCROLL_MARGIN = 4;
+    if (lastSelectedIndex.current !== -1 && lastSelectedIndex.current !== idx) {
+      const isMovingDown = idx > lastSelectedIndex.current;
+      const targetIdx = isMovingDown 
+        ? Math.min(idx + SCROLL_MARGIN, sortedEntries.length - 1)
+        : Math.max(idx - SCROLL_MARGIN, 0);
+      
+      virtualizer.scrollToIndex(targetIdx, { align: 'auto' });
+    } else {
+      virtualizer.scrollToIndex(idx, { align: 'auto' });
+    }
+    
+    lastSelectedIndex.current = idx;
   }, [selectedPath, sortedEntries, virtualizer]);
 
   const colWidthMap: Record<FileListColumnId, number> = useMemo(

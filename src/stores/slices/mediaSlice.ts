@@ -127,7 +127,7 @@ export const createMediaSlice: StateCreator<
 
       if (isVideo || isAudio) {
         set({ isLoading: true });
-        const url = await MediaAPI.getMediaUrl(path);
+        const url = await MediaAPI.getMediaUrl(path, true);
         if (get().currentLoadId !== loadId) {
           if (url.startsWith('media://')) MediaAPI.releaseMediaUrl(url);
           return;

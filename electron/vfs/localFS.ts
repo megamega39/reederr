@@ -1,4 +1,6 @@
+import { createReadStream } from 'node:fs';
 import { readdir, stat as statAsync, readFile as readFileAsync } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import { join } from 'node:path';
 import type { DirectoryEntry, FileStats } from './types';
 
@@ -19,6 +21,10 @@ function isVideo(name: string): boolean {
 function isAudio(name: string): boolean {
   const ext = name.slice(name.lastIndexOf('.')).toLowerCase();
   return AUDIO_EXT.has(ext);
+}
+
+export function streamFile(path: string, options?: { start?: number; end?: number }): Readable {
+  return createReadStream(path, options);
 }
 
 export async function listDirectory(path: string): Promise<DirectoryEntry[]> {

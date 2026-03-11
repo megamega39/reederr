@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { ViewerState } from '../viewerStore.types';
-import { isArchivePath, normalizePath, getParentPath, resolveArchivePath, getInnerPath } from '../viewerStore.utils';
+import { isArchivePath, normalizePath, getParentPath } from '../viewerStore.utils';
 import { FileSystemAPI } from '../../services/api';
 import { DirectoryEntry } from '../../types';
 
@@ -152,7 +152,7 @@ export const createTreeSlice: StateCreator<
     let bestMatch: { name: string, path: string, type: string } | null = null;
     for (const cand of candidates) {
       const normCand = normalizePath(cand.path).toLowerCase();
-      // Use more robust matching that respects archive boundaries
+      // Use robust matching that respects archive boundaries
       if (targetPathLower === normCand || targetPathLower.startsWith(normCand + '/') || targetPathLower.match(new RegExp('^' + normCand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[!]'))) {
         if (!bestMatch || cand.path.length > bestMatch.path.length) {
           bestMatch = cand;
@@ -163,31 +163,29 @@ export const createTreeSlice: StateCreator<
     }
 
     // 2. Build the breadcrumb of IDs to expand
-    let ancestors: string[] = [];
+    const ancestors: string[] = [];
     if (bestMatch) {
       const prefix = bestMatch.type === 'favorite' ? 'favorite' : 'special';
       ancestors.push(`${prefix}-${normalizePath(bestMatch.path)}`);
       
       const subPath = targetPath.slice(bestMatch.path.length).replace(/^[/\\]+/, '');
       if (subPath) {
-        // Robust reconstruction: handle both slash and archive separator
         let currentPathAcc = bestMatch.path;
         
-        // Simpler approach: reconstruct segment by segment and check IDs
+        // Reconstruct segment by segment
         const parts = subPath.split(/[/\\]/);
         for (const part of parts) {
           if (!part) continue;
           
           if (part.includes('!')) {
-            // This segment contains the archive boundary (e.g. "archive.zip!Inner")
             const segments = part.split('!');
             const archiveFileName = segments[0];
             
-            // 1. Add the archive file itself (No bang for node ID)
+            // Add the archive file itself
             currentPathAcc += (currentPathAcc.endsWith('/') ? '' : '/') + archiveFileName;
             ancestors.push(`${prefix}-${normalizePath(currentPathAcc)}`);
             
-            // 2. Add the virtual segments inside
+            // Add segments inside the archive
             currentPathAcc += '!';
             for (let i = 1; i < segments.length; i++) {
               if (segments[i]) {
@@ -196,7 +194,6 @@ export const createTreeSlice: StateCreator<
               }
             }
           } else {
-            // General folder segment
             const sep = (currentPathAcc.endsWith('/') || currentPathAcc.endsWith('!')) ? '' : '/';
             currentPathAcc += sep + part;
             ancestors.push(`${prefix}-${normalizePath(currentPathAcc)}`);
@@ -237,8 +234,8 @@ export const createTreeSlice: StateCreator<
     }
 
     // 3. Sequentially expand and ensure children
-    ancestors = Array.from(new Set(ancestors));
-    for (const ancId of ancestors) {
+    const uniqueAncestors = Array.from(new Set(ancestors));
+    for (const ancId of uniqueAncestors) {
       set((s) => ({ expandedPaths: { ...s.expandedPaths, [ancId]: true } }));
       await ensureTreeChildren(ancId);
     }

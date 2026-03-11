@@ -1,7 +1,8 @@
 import { createServer } from 'node:http';
-import { createReadStream, statSync } from 'node:fs';
 import { extname } from 'node:path';
 import { safeDecodeURIComponent } from './utils/uriUtils';
+import { splitArchivePath } from './vfs/utils';
+import { stat, streamFile } from './vfs/composite';
 
 const MIME_MAP: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -76,7 +77,6 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
         return;
       }
 
-      const { stat, streamFile } = require('./vfs/composite');
       const s = await stat(realPath);
       if (!s) {
         res.writeHead(404);
@@ -94,7 +94,10 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
         if (isHead || !hasBody) res.end();
       };
 
-      if (!rangeHeader) {
+      // Check if the path is virtual (inside an archive and not extracted)
+      const isVirtual = !!splitArchivePath(realPath);
+
+      if (!rangeHeader || isVirtual) {
         sendHeaders(200, { 'Content-Length': String(fileSize) }, !isHead);
         if (!isHead) streamFile(realPath).pipe(res);
         return;
@@ -113,11 +116,9 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
         'Content-Length': String(chunkSize),
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       }, !isHead);
+      
       if (!isHead) {
-        // アーカイブ内ファイルの場合、部分的なストリーム出力は未対応(全体を出す)
-        // 本物のファイルなら fs.createReadStream({start, end}) が理想だが、
-        // ここでは streamFile(realPath) をそのまま pipe する。
-        streamFile(realPath).pipe(res);
+        streamFile(realPath, { start, end }).pipe(res);
       }
     });
 

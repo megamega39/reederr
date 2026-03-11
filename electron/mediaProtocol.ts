@@ -102,7 +102,11 @@ export function registerMediaProtocol(mediaPathMap: Map<string, string>): void {
     }
 
     const range = parseRangeHeader(rangeHeader, fileSize);
-    if (!range) {
+    
+    // Check if the path is virtual (inside an archive and not extracted)
+    const isVirtual = !!require('./vfs/utils').splitArchivePath(realPath);
+
+    if (!range || isVirtual) {
       const stream = streamFile(realPath);
       return new Response(toWebStream(stream), {
         status: 200,
@@ -116,16 +120,8 @@ export function registerMediaProtocol(mediaPathMap: Map<string, string>): void {
     const { start, end } = range;
     const chunkSize = end - start + 1;
     
-    // 注意: ストリーム（7zip stdout等）の場合、厳密な 206 対応(特定バイトのみ送信)は
-    // ストリーム全体を消費する必要があるため非効率。
-    // そのため、通常のファイル以外（アーカイブ内）かつ range 指定がある場合は、
-    // 実装が複雑になるので、ここでは簡易的にストリームをそのまま流す。
-    // (ただしヘッダーだけは 206 を返してブラウザをだます)
-    const stream = streamFile(realPath);
-    
-    // もし本物のファイル（!がない）なら、createReadStream で範囲指定できる。
-    // しかし streamFile は Readable を返すので、ここでは一貫性のためにそのまま返す。
-    // 本来は streamFile 自体をオプション付き(range)に対応させるのが理想的。
+    // For physical files, we can now use Range-based streaming
+    const stream = streamFile(realPath, { start, end });
     
     return new Response(toWebStream(stream), {
       status: 206,

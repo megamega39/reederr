@@ -1,17 +1,21 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { useViewerStore } from '../stores/viewerStore';
 import { useLayoutStore } from '../stores/layoutStore';
+import { normalizePath } from '../stores/viewerStore.utils';
 import styles from './StatusBar.module.css';
 
 function formatSize(bytes?: number) {
-  if (bytes == null) return '';
+  if (bytes == null || bytes < 0) return '';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 export const StatusBar = memo(() => {
   const selectedPath = useViewerStore((s) => s.selectedPath);
+  const selectedPaths = useViewerStore((s) => s.selectedPaths);
+  const entries = useViewerStore((s) => s.entries);
   const selectedEntry = useViewerStore((s) => s.selectedEntry);
   const getSelectedPosition = useViewerStore((s) => s.getSelectedPosition);
   const imageDimensions = useViewerStore((s) => s.imageDimensions);
@@ -22,6 +26,23 @@ export const StatusBar = memo(() => {
   const { pos, total } = getSelectedPosition();
   const dims = selectedPath ? imageDimensions[selectedPath] : null;
 
+  // Calculate multi-selection stats
+  const selectionStats = useMemo(() => {
+    if (selectedPaths.length <= 1) return null;
+    let totalSize = 0;
+    selectedPaths.forEach(path => {
+      const norm = normalizePath(path);
+      const e = entries.find(x => normalizePath(x.path) === norm);
+      if (e && e.size != null && e.size > 0) {
+        totalSize += e.size;
+      }
+    });
+    return {
+      count: selectedPaths.length,
+      size: totalSize
+    };
+  }, [selectedPaths, entries]);
+
   return (
     <div className={styles.statusBar}>
       <div className={`${styles.section} ${styles.main}`}>
@@ -31,18 +52,20 @@ export const StatusBar = memo(() => {
           </span>
         ) : (
           <span className={styles.path} title={entry?.path}>
-            {entry?.path ?? '-'}
+            {selectionStats 
+              ? `${selectionStats.count} 個のオブジェクトを選択 (${formatSize(selectionStats.size)})` 
+              : (entry?.path ?? '-')}
           </span>
         )}
       </div>
 
       <div className={`${styles.section} ${styles.info}`}>
-        {dims && (
+        {!selectionStats && dims && (
           <span className={styles.dims}>
             {dims.w} × {dims.h}
           </span>
         )}
-        {entry?.size != null && (
+        {!selectionStats && entry?.size != null && (
           <span className={styles.size}>
             {formatSize(entry.size)}
           </span>

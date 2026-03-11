@@ -59,7 +59,7 @@ export function PersistenceManager() {
       } catch (e) {
         console.error('[Persistence] CRITICAL: Initialization aborted due to error:', e);
       } finally {
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         useViewerStore.getState().setRestoring(false);
         useLayoutStore.getState().setRestoring(false);
         useMediaPlayerStore.getState().setRestoring(false);

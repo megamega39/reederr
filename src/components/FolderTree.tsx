@@ -172,29 +172,59 @@ export function FolderTree() {
   const isHydrated = useViewerStore((s) => s.isHydrated);
   const lastScrolledPath = useRef<string | null>(null);
 
-  // Scroll current path into view when it changes or when restoration finishes
+  // Scroll current path into view when it changes, when list grows, or when restoration state changes
   useEffect(() => {
     if (!currentPath || !isHydrated) return;
     
+    // Normalize consistently for comparison
     const normCurrent = normalizePath(currentPath).toLowerCase();
-    const idx = flatNodes.findIndex(n => normalizePath(n.path).toLowerCase() === normCurrent);
     
-    if (idx >= 0) {
-      // If we are still in the middle of restoration, or if the path just changed,
-      // we might need a small delay to let the virtualizer settle.
+    // Smart Scroll: Find the exact index, or the closest visible ancestor
+    const findBestIndex = () => {
+      // 1. Try exact match
+      const exactIdx = flatNodes.findIndex(n => normalizePath(n.path).toLowerCase() === normCurrent);
+      if (exactIdx >= 0) return exactIdx;
+      
+      // 2. Try closest ancestor
+      let parent = getParentPath(currentPath);
+      while (parent) {
+        const normParent = normalizePath(parent).toLowerCase();
+        const parentIdx = flatNodes.findIndex(n => normalizePath(n.path).toLowerCase() === normParent);
+        if (parentIdx >= 0) return parentIdx;
+        parent = getParentPath(parent);
+      }
+      return -1;
+    };
+
+    const targetIdx = findBestIndex();
+    
+    if (targetIdx >= 0) {
       const performScroll = () => {
-        virtualizer.scrollToIndex(idx, { align: 'center', behavior: 'auto' });
-        lastScrolledPath.current = normCurrent;
+        if (!parentRef.current) return;
+        virtualizer.scrollToIndex(targetIdx, { align: 'center', behavior: 'auto' });
+        
+        const isExact = normalizePath(flatNodes[targetIdx].path).toLowerCase() === normCurrent;
+        if (isExact) {
+          lastScrolledPath.current = normCurrent;
+        }
       };
 
-      if (isRestoring || lastScrolledPath.current !== normCurrent) {
-        const timer = setTimeout(performScroll, isRestoring ? 100 : 0);
+      // During restoration, we perform multiple attempts with a delay
+      if (isRestoring) {
+        const timer = setTimeout(performScroll, 500); 
+        return () => clearTimeout(timer);
+      } 
+      
+      // If we just finished restoring or if path changed, perform a clean final scroll
+      if (lastScrolledPath.current !== normCurrent) {
+        const timer = setTimeout(performScroll, 200);
         return () => clearTimeout(timer);
       } else {
+        // Immediate scroll for normal navigation
         performScroll();
       }
     }
-  }, [currentPath, virtualizer, flatNodes, isHydrated, isRestoring]);
+  }, [currentPath, virtualizer, flatNodes.length, isHydrated, isRestoring]);
 
   if (treeRoots.length === 0) {
     return (
