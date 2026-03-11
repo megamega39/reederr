@@ -54,9 +54,7 @@ export async function listArchiveDirectory(
   return listZipVia7z(archivePath, prefix, options?.recursive ?? false);
 }
 
-const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.jpe', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif']);
-const VIDEO_EXT = new Set(['.mp4', '.webm', '.avi', '.mkv', '.mov', '.wmv', '.m4v']);
-const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac']);
+import { IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from './constants';
 
 /** 拡張子は大文字小文字を区別しない（.JPG, .jpg ともに画像として認識） */
 function isMediaPath(path: string): boolean {

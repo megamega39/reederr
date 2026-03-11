@@ -5,7 +5,7 @@ import { platform } from 'node:os';
 import { is7zAvailable } from '../sevenZipPath';
 import { getFileIcon, type IconSize } from '../fileIcon';
 import { splitArchivePath } from '../vfs/utils';
-import { listDirectory, readFile, stat } from '../vfs';
+import { listDirectory, readFile, stat, prefetchArchiveIndex } from '../vfs';
 import { getMediaUrl, disposeMediaIdFromUrl } from '../mediaUrlManager';
 import { loadSettings, saveSettings, loadConfig, saveConfig } from '../settings';
 import { getDrives, getSpecialFolders } from '../drives';
@@ -78,6 +78,16 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null, h
     ) => {
       try {
         const files = await listDirectory(path, { recursive });
+        
+        // Background prefetch for archives in the current directory
+        if (Array.isArray(files) && !recursive) {
+          const archives = files.filter(f => f.isArchive && !f.isDirectory);
+          // Limit prefetch to first 5 archives to avoid heavy load
+          archives.slice(0, 5).forEach(archive => {
+            prefetchArchiveIndex(archive.path).catch(() => {});
+          });
+        }
+
         return { success: true, files: Array.isArray(files) ? files : [] };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

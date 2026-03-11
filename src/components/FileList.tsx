@@ -1,197 +1,69 @@
 import { useMemo, useState, useCallback, useEffect, useRef, Fragment } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useViewerStore } from '../stores/viewerStore';
-import { useLayoutStore } from '../stores/layoutStore';
+import { useLayoutStore, saveLayoutToStorage } from '../stores/layoutStore';
 import type { FileListSortBy, FileListColumnId } from '../stores/layoutStore';
-import { saveLayoutToStorage } from '../stores/layoutStore';
-import { FileSystemAPI } from '../services/api';
 import { normalizePath } from '../stores/viewerStore.utils';
 import { FileIcon } from './FileIcon';
 import styles from './FileList.module.css';
 import { FileContextMenu } from './FileContextMenu';
 import { FolderContextMenu } from './FolderContextMenu';
 import type { DirectoryEntry } from '../types';
+import { formatSize, formatMtime, getFileType, getParentPath } from '../utils/fileUtils';
+import { ColumnResizer } from './ColumnResizer';
+import { useFileSorting } from '../hooks/useFileSorting';
+import { FileSystemAPI } from '../services/api';
 
-function getParentPath(p: string): string | null {
-  const m = p.match(/^(.+)[/\\][^/\\]*$/);
-  return m ? m[1] : null;
-}
-
-function formatSize(bytes: number | null | undefined): string {
-  if (bytes == null || Number.isNaN(bytes)) return '-';
-  if (bytes < 1024) return `${bytes.toLocaleString()} B`;
-  if (bytes < 1024 * 1024) {
-    const kb = Math.round(bytes / 1024);
-    return `${kb.toLocaleString()} KB`;
-  }
-  const mb = (bytes / (1024 * 1024)).toFixed(2);
-  return `${mb} MB`;
-}
-
-function formatMtime(ms?: number): string {
-  if (ms == null) return '-';
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const h = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  return `${y}/${mo}/${day} ${h}:${mi}`;
-}
-
-function getFileType(entry: DirectoryEntry | null | undefined): string {
-  if (!entry) return 'ファイル';
-  if (entry.isDirectory) return 'フォルダ';
-  if (entry.isArchive) {
-    const dotIdx = (entry.name ?? '').lastIndexOf('.');
-    const ext = (dotIdx >= 0 ? entry.name.slice(dotIdx + 1) : '').toUpperCase();
-    return ext ? `${ext} アーカイブ` : 'アーカイブ';
-  }
-  const dotIdx = (entry.name ?? '').lastIndexOf('.');
-  const ext = (dotIdx >= 0 ? '.' + (entry.name ?? '').slice(dotIdx + 1) : '').toLowerCase();
-  const typeMap: Record<string, string> = {
-    '.jpg': 'JPG ファイル',
-    '.jpeg': 'JPEG ファイル',
-    '.png': 'PNG ファイル',
-    '.gif': 'GIF ファイル',
-    '.webp': 'WebP ファイル',
-    '.bmp': 'BMP ファイル',
-    '.mp4': 'MP4 ファイル',
-    '.webm': 'WebM ファイル',
-    '.avi': 'AVI ファイル',
-    '.mkv': 'MKV ファイル',
-    '.mov': 'MOV ファイル',
-    '.wmv': 'WMV ファイル',
-    '.m4a': 'M4A ファイル',
-    '.m4v': 'M4V ファイル',
-    '.mp3': 'MP3 オーディオ',
-    '.wav': 'WAV オーディオ',
-    '.ogg': 'OGG オーディオ',
-    '.flac': 'FLAC オーディオ',
-    '.aac': 'AAC オーディオ',
-  };
-  return typeMap[ext] ?? (ext ? `${ext.slice(1).toUpperCase()} ファイル` : 'ファイル');
-}
-
-function ColumnResizer({
-  onResize,
-  onResizeEnd,
-  className,
-}: {
-  onResize: (delta: number) => void;
-  onResizeEnd?: () => void;
-  className?: string;
-}) {
-  const [dragging, setDragging] = useState(false);
-  const startX = useRef(0);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setDragging(true);
-    startX.current = e.clientX;
-  }, []);
-
-  useEffect(() => {
-    if (!dragging) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      onResize(e.clientX - startX.current);
-      startX.current = e.clientX;
-    };
-    const handleMouseUp = () => {
-      setDragging(false);
-      onResizeEnd?.();
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [dragging, onResize, onResizeEnd]);
-
-  return (
-    <div
-      className={`${styles.colResizer} ${className ?? ''}`}
-      onMouseDown={handleMouseDown}
-    />
-  );
-}
+import { useShallow } from 'zustand/react/shallow';
 
 export function FileList() {
-  const entries = useViewerStore((s) => s.entries) ?? [];
-  const error = useViewerStore((s) => s.error);
-  const selectedPath = useViewerStore((s) => s.selectedPath);
-  const selectedPaths = useViewerStore((s) => s.selectedPaths);
-  const setSelectedPath = useViewerStore((s) => s.setSelectedPath);
-  const setSelectedPaths = useViewerStore((s) => s.setSelectedPaths);
-  const isLoading = useViewerStore((s) => s.isLoading);
-  const loadMedia = useViewerStore((s) => s.loadMedia);
-  const loadDirectory = useViewerStore((s) => s.loadDirectory);
+  const { entries, error, selectedPath, selectedPaths, isLoading, fileListFilter } = useViewerStore(
+    useShallow((s) => ({
+      entries: s.entries ?? [],
+      error: s.error,
+      selectedPath: s.selectedPath,
+      selectedPaths: s.selectedPaths,
+      isLoading: s.isLoading,
+      fileListFilter: s.fileListFilter,
+    }))
+  );
 
-  const sortBy = useLayoutStore((s) => s.fileListSortBy);
-  const sortOrder = useLayoutStore((s) => s.fileListSortOrder);
-  const setFileListSort = useLayoutStore((s) => s.setFileListSort);
-  const colName = useLayoutStore((s) => s.fileListColName);
-  const colSize = useLayoutStore((s) => s.fileListColSize);
-  const colType = useLayoutStore((s) => s.fileListColType);
-  const colMtime = useLayoutStore((s) => s.fileListColMtime);
-  const setColName = useLayoutStore((s) => s.setFileListColName);
-  const setColSize = useLayoutStore((s) => s.setFileListColSize);
-  const setColType = useLayoutStore((s) => s.setFileListColType);
-  const setColMtime = useLayoutStore((s) => s.setFileListColMtime);
-  const columnOrder = useLayoutStore((s) => s.fileListColumnOrder);
-  const setColumnOrder = useLayoutStore((s) => s.setFileListColumnOrder);
+  const { setSelectedPath, setSelectedPaths, loadMedia, loadDirectory, setFileListFilter } = useViewerStore(
+    useShallow((s) => ({
+      setSelectedPath: s.setSelectedPath,
+      setSelectedPaths: s.setSelectedPaths,
+      loadMedia: s.loadMedia,
+      loadDirectory: s.loadDirectory,
+      setFileListFilter: s.setFileListFilter,
+    }))
+  );
+
+  const { sortBy, sortOrder, colName, colSize, colType, colMtime, columnOrder } = useLayoutStore(
+    useShallow((s) => ({
+      sortBy: s.fileListSortBy,
+      sortOrder: s.fileListSortOrder,
+      colName: s.fileListColName,
+      colSize: s.fileListColSize,
+      colType: s.fileListColType,
+      colMtime: s.fileListColMtime,
+      columnOrder: s.fileListColumnOrder,
+    }))
+  );
+
+  const { setFileListSort, setColName, setColSize, setColType, setColMtime, setColumnOrder } = useLayoutStore(
+    useShallow((s) => ({
+      setFileListSort: s.setFileListSort,
+      setColName: s.setFileListColName,
+      setColSize: s.setFileListColSize,
+      setColType: s.setFileListColType,
+      setColMtime: s.setFileListColMtime,
+      setColumnOrder: s.setFileListColumnOrder,
+    }))
+  );
 
   const parentRef = useRef<HTMLDivElement>(null);
 
-  const fileListFilter = useViewerStore((s) => s.fileListFilter);
-  const setFileListFilter = useViewerStore((s) => s.setFileListFilter);
-  const sortedEntries = useMemo(() => {
-    const safe = entries.filter((e): e is DirectoryEntry => 
-      e != null && 
-      typeof e === 'object' && 
-      typeof (e as DirectoryEntry).name === 'string' && 
-      typeof (e as DirectoryEntry).path === 'string'
-    );
-    
-    // Apply Junk/Temp Filter
-    let filtered = safe.filter((e) => {
-      const name = e.name;
-      // Hide common junk/temp artifacts
-      if (name === '__MACOSX' || name === '.DS_Store' || name.startsWith('._')) return false;
-      if (name.startsWith('~') || name.startsWith('7z')) return false;
-      return true;
-    });
-    // Apply Quick Filter
-    if (fileListFilter) {
-      const lower = fileListFilter.toLowerCase().normalize('NFKC');
-      filtered = filtered.filter((e) => 
-        e.name.toLowerCase().normalize('NFKC').includes(lower)
-      );
-    }
-
-    const mul = sortOrder === 'asc' ? 1 : -1;
-    return [...filtered].sort((a, b) => {
-      if ((a?.isDirectory ?? false) !== (b?.isDirectory ?? false)) return a?.isDirectory ? -1 : 1;
-      let cmp = 0;
-      if (sortBy === 'name') {
-        cmp = (a?.name ?? '').localeCompare(b?.name ?? '', undefined, { sensitivity: 'base' });
-      } else if (sortBy === 'size') {
-        cmp = (a?.size ?? 0) - (b?.size ?? 0);
-      } else if (sortBy === 'mtime') {
-        cmp = (a?.mtime ?? 0) - (b?.mtime ?? 0);
-      } else {
-        cmp = getFileType(a).localeCompare(getFileType(b));
-      }
-      return cmp * mul;
-    });
-  }, [entries, sortBy, sortOrder, fileListFilter]);
+  const sortedEntries = useFileSorting(entries);
 
   const virtualizer = useVirtualizer({
     count: sortedEntries.length,

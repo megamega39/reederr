@@ -11,6 +11,7 @@ import { AddressBar } from './components/AddressBar';
 import { ResizableDivider } from './components/ResizableDivider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SettingsModal } from './components/SettingsModal';
+import { HelpModal } from './components/HelpModal';
 import { PersistenceManager } from './components/PersistenceManager';
 import { ToastContainer } from './components/ToastContainer';
 import { useGlobalKeyboardShortcuts } from './hooks/useGlobalKeyboardShortcuts';
@@ -22,6 +23,7 @@ import './styles/variables.css';
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const leftPaneWidth = useLayoutStore((s) => s.leftPaneWidth);
   const setLeftPaneWidth = useLayoutStore((s) => s.setLeftPaneWidth);
   const folderPaneHeight = useLayoutStore((s) => s.folderPaneHeight);
@@ -71,8 +73,8 @@ export default function App() {
     return () => el.removeEventListener('wheel', handler);
   }, [goNextPage, goPrevPage, nextEntry, prevEntry]);
 
-  useGlobalKeyboardShortcuts(handleToggleFullscreen);
-  useIpcMenuHandlers(handleToggleFullscreen, setShowSettings);
+  useGlobalKeyboardShortcuts(handleToggleFullscreen, () => setShowHelp(prev => !prev));
+  useIpcMenuHandlers(handleToggleFullscreen, setShowSettings, setShowHelp);
 
   // Slideshow Timer Effect
   const slideshowInterval = useViewerStore((s) => s.slideshowInterval);
@@ -93,6 +95,7 @@ export default function App() {
         <div className={styles.appHeaderArea}>
           <NavigationBar />
           {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+          {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
           <AddressBar />
         </div>
 

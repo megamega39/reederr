@@ -111,3 +111,18 @@ export async function getArchiveIndex(archivePath: string): Promise<SevenZipEntr
 
   return filtered;
 }
+
+/**
+ * バックグラウンドでアーカイブのインデックスを先行取得する
+ */
+export async function prefetchArchiveIndex(archivePath: string): Promise<void> {
+  const key = makeCacheKey(archivePath);
+  if (!key || cache.has(key)) return;
+
+  try {
+    console.log('[ArchiveCache:Prefetch] Starting prefetch:', archivePath);
+    await getArchiveIndex(archivePath);
+  } catch (err) {
+    console.warn('[ArchiveCache:Prefetch] Failed to prefetch:', archivePath, err);
+  }
+}

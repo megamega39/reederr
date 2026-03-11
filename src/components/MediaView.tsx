@@ -1,23 +1,12 @@
-import { useEffect, useRef, memo } from 'react';
+import { useEffect, memo } from 'react';
 import { useViewerStore } from '../stores/viewerStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
 import { ImageView } from './ImageView';
 import { MediaAPI } from '../services/api';
+import { MediaVideo } from './MediaVideo';
+import { MediaAudio } from './MediaAudio';
 import styles from './MediaView.module.css';
-
-function applyMediaProps(
-  el: HTMLMediaElement | null,
-  loop: boolean,
-  rate: number,
-  preservesPitch: boolean
-) {
-  if (!el) return;
-  el.loop = loop;
-  el.playbackRate = rate;
-  if ('preservesPitch' in el) (el as HTMLMediaElement & { preservesPitch: boolean }).preservesPitch = preservesPitch;
-  if ('webkitPreservesPitch' in el) (el as HTMLMediaElement & { webkitPreservesPitch: boolean }).webkitPreservesPitch = preservesPitch;
-}
 
 export const MediaView = memo(() => {
   const mediaBlobUrl = useViewerStore((s) => s.mediaBlobUrl);
@@ -31,8 +20,6 @@ export const MediaView = memo(() => {
   const nextEntry = useViewerStore((s) => s.nextEntry);
   const setImageDimensions = useViewerStore((s) => s.setImageDimensions);
   const loadMedia = useViewerStore((s) => s.loadMedia);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const viewMode = useLayoutStore((s) => s.viewMode);
   const binding = useLayoutStore((s) => s.binding);
   const autoThreshold = useLayoutStore((s) => s.autoThreshold);
@@ -40,12 +27,14 @@ export const MediaView = memo(() => {
   const isPreviewFullscreen = useLayoutStore((s) => s.isPreviewFullscreen);
 
   const loopEnabled = useMediaPlayerStore((s) => s.loopEnabled);
-  const playbackRate = useMediaPlayerStore((s) => s.playbackRate);
-  const preservesPitch = useMediaPlayerStore((s) => s.preservesPitch);
-  const toggleLoop = useMediaPlayerStore((s) => s.toggleLoop);
   const changePlaybackRate = useMediaPlayerStore((s) => s.changePlaybackRate);
   const resetPlaybackRate = useMediaPlayerStore((s) => s.resetPlaybackRate);
+  const toggleLoop = useMediaPlayerStore((s) => s.toggleLoop);
   const loadFromStorage = useMediaPlayerStore((s) => s.loadFromStorage);
+  const autoPlay = useMediaPlayerStore((s) => s.autoPlay);
+
+  const error = useViewerStore((s) => s.error);
+  const isLoading = useViewerStore((s) => s.isLoading);
 
   useEffect(() => {
     loadFromStorage();
@@ -56,16 +45,6 @@ export const MediaView = memo(() => {
       loadMedia(selectedPath);
     }
   }, [viewMode, binding, autoThreshold]);
-
-  useEffect(() => {
-    applyMediaProps(audioRef.current, loopEnabled, playbackRate, preservesPitch);
-    applyMediaProps(videoRef.current, loopEnabled, playbackRate, preservesPitch);
-  }, [loopEnabled, playbackRate, preservesPitch]);
-
-  useEffect(() => {
-    const el = mediaType === 'video' ? videoRef.current : mediaType === 'audio' ? audioRef.current : null;
-    if (el) applyMediaProps(el, loopEnabled, playbackRate, preservesPitch);
-  }, [mediaType, mediaBlobUrl]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -112,6 +91,25 @@ export const MediaView = memo(() => {
     );
   }
 
+  if (error) {
+    return (
+      <div className={`${styles.mediaView} ${styles.error}`}>
+        <div className={styles.errorIcon}>⚠️</div>
+        <div className={styles.errorMessage}>{error}</div>
+        <button className={styles.retryButton} onClick={() => selectedPath && loadMedia(selectedPath)}>再読み込み</button>
+      </div>
+    );
+  }
+
+  if (isLoading && mediaType !== 'image') {
+    return (
+      <div className={`${styles.mediaView} ${styles.loading}`}>
+        <div className={styles.spinner} />
+        <div className={styles.loadingText}>動画を準備しています...</div>
+      </div>
+    );
+  }
+
   const handleToggleFullscreen = () => {
     const next = !isPreviewFullscreen;
     MediaAPI.setPreviewFullscreen(next);
@@ -136,36 +134,20 @@ export const MediaView = memo(() => {
       {!entry ? (
         <div className={styles.placeholder}>画像・動画・音楽を選択してください</div>
       ) : mediaType === 'audio' ? (
-        <div className={styles.audioWrap} key={`audio-wrap-${entry.path}-${mediaBlobUrl}`}>
-          <audio
-            key={`audio-${entry.path}-${mediaBlobUrl}`}
-            ref={audioRef}
-            src={mediaBlobUrl ?? undefined}
-            controls
-            autoPlay
-            preload="metadata"
-            loop={loopEnabled}
-            onEnded={handleMediaEnded}
-            className="media-audio"
-            style={{ width: '100%', maxWidth: 480 }}
-          />
-          <span className="media-audio-filename">{entry.name}</span>
-        </div>
+        <MediaAudio
+          src={mediaBlobUrl ?? ''}
+          name={entry.name}
+          autoPlay={autoPlay}
+          loop={loopEnabled}
+          onEnded={handleMediaEnded}
+        />
       ) : mediaType === 'video' ? (
-        <div className="media-video-wrap" key={`video-wrap-${entry.path}-${mediaBlobUrl}`} style={{ width: '100%', height: '100%' }}>
-          <video
-            key={`video-${entry.path}-${mediaBlobUrl}`}
-            ref={videoRef}
-            src={mediaBlobUrl ?? undefined}
-            controls
-            autoPlay
-            preload="metadata"
-            loop={loopEnabled}
-            onEnded={handleMediaEnded}
-            className="media-video"
-            style={{ objectFit: 'contain', width: '100%', height: '100%' }}
-          />
-        </div>
+        <MediaVideo
+          src={mediaBlobUrl ?? ''}
+          autoPlay={autoPlay}
+          loop={loopEnabled}
+          onEnded={handleMediaEnded}
+        />
       ) : (
         <div className="media-image-wrap" key={`image-wrap-${entry.path}`} style={{ width: '100%', height: '100%' }}>
           <ImageView

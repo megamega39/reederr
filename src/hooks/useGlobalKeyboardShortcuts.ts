@@ -4,7 +4,8 @@ import { useLayoutStore } from '../stores/layoutStore';
 import { useShortcutStore, ShortcutAction } from '../stores/shortcutStore';
 
 export function useGlobalKeyboardShortcuts(
-  handleToggleFullscreen: () => void
+  handleToggleFullscreen: () => void,
+  handleToggleHelp: () => void
 ) {
   const viewer = useViewerStore();
   const layout = useLayoutStore();
@@ -13,6 +14,12 @@ export function useGlobalKeyboardShortcuts(
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+
+      if (e.key === 'F1') {
+        e.preventDefault();
+        handleToggleHelp();
+        return;
+      }
 
       // Create a string representation of the key combo
       const mods = [];

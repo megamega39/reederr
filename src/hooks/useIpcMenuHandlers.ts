@@ -5,7 +5,8 @@ import { MenuAPI } from '../services/api';
 
 export function useIpcMenuHandlers(
   handleToggleFullscreen: () => void,
-  setShowSettings: (show: boolean) => void
+  setShowSettings: (show: boolean) => void,
+  setShowHelp: (show: boolean) => void
 ) {
   const goBack = useViewerStore((s) => s.goBack);
   const goForward = useViewerStore((s) => s.goForward);
@@ -47,6 +48,7 @@ export function useIpcMenuHandlers(
         const sel = useViewerStore.getState().selectedPath ?? useViewerStore.getState().currentPath;
         if (sel) navigator.clipboard.writeText(sel).catch(() => { });
       }),
+      MenuAPI.onMenuHelp(() => setShowHelp(true)),
     ];
     return () => unsubs.forEach((u) => u());
     // eslint-disable-next-line react-hooks/exhaustive-deps

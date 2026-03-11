@@ -102,6 +102,12 @@ export function buildMenu(mainWindow: BrowserWindow) {
       label: 'ヘルプ(&H)',
       submenu: [
         {
+          label: '使い方(&H)...',
+          accelerator: 'F1',
+          click: () => send('menu-help'),
+        },
+        { type: 'separator' },
+        {
           label: 'バージョン情報(&A)...',
           click: () => {
             dialog.showMessageBox(mainWindow, {

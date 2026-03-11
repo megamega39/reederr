@@ -55,6 +55,7 @@ export const MenuAPI = {
   onMenuOpenFolder: (cb: (path: string) => void) => window.reederr.onMenuOpenFolder(cb),
   onMenuCopyPath: (cb: () => void) => window.reederr.onMenuCopyPath(cb),
   onMenuZoom: (cb: (action: string) => void) => window.reederr.onMenuZoom(cb),
+  onMenuHelp: (cb: () => void) => window.reederr.onMenuHelp(cb),
 };
 
 export const NotificationAPI = {

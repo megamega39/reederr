@@ -1,3 +1,38 @@
+:root {
+  /* Colors */
+  --win-bg: #e8e8e8;
+  --win-bg-light: #f5f5f5;
+  --win-bg-white: #ffffff;
+  --win-bg-header: #f8f8f8;
+  --win-bg-inset: #ffffff;
+  
+  --border-main: #ccc;
+  --border-dark: #999;
+  --border-light: #ddd;
+  --border-accent: #0078d4;
+  
+  --accent-color: #0078d4;
+  --accent-bg-selection: #0078d4;
+  --accent-bg-selection-light: #cce5ff;
+  --accent-bg-active: #99c9ff;
+  --accent-text-selection: #ffffff;
+  
+  --text-main: #000000;
+  --text-muted: #555555;
+  --text-disabled: #888888;
+  --text-error: #cc0000;
+  
+  /* Fonts */
+  --font-family: 'MS UI Gothic', sans-serif;
+  --font-size-base: 12px;
+  --font-size-sm: 11px;
+  
+  /* Layout */
+  --sidebar-width: 250px;
+  --toolbar-height: 40px;
+  --status-bar-height: 24px;
+}
+
 * {
   box-sizing: border-box;
 }

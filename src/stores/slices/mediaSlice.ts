@@ -164,21 +164,30 @@ export const createMediaSlice: StateCreator<
         visible.forEach((ent: DirectoryEntry) => get().ensureImageDimension(ent.path, createUrl(ent.path)));
       }
 
-      // Preloading logic with concurrency control
+      // Preloading logic with dual-direction pre-decoding
       const allEntries = isVideo || isAudio ? get().entries : get().imageEntries;
       const curIdx = allEntries.findIndex((e: DirectoryEntry) => e.path === path);
       if (curIdx >= 0) {
         const pagesPerView = isImage ? get().getPagesPerView() : 1;
-        const preloadCount = pagesPerView * 3; // Preload a bit more
-        const preloads = [];
-        for (let i = pagesPerView; i < pagesPerView + preloadCount; i++) {
+        // Optimization: Preload more forward, less backward
+        const preloadLookahead = pagesPerView * 4; 
+        const preloadLookbehind = pagesPerView * 2; 
+
+        const preloads: DirectoryEntry[] = [];
+        // Forward preloads (higher priority)
+        for (let i = pagesPerView; i < pagesPerView + preloadLookahead; i++) {
           const idx = curIdx + i;
           if (idx < allEntries.length) preloads.push(allEntries[idx]);
         }
+        // Backward preloads (lower priority for quick back navigation)
+        for (let i = 1; i <= preloadLookbehind; i++) {
+          const idx = curIdx - i;
+          if (idx >= 0) preloads.push(allEntries[idx]);
+        }
 
-        // Limit parallel decodes to 2
+        // Limit parallel decodes to prevent UI jank
         let decodingCount = 0;
-        const MAX_DECODE = 2;
+        const MAX_DECODE = 3;
 
         const processPreload = async (ent: DirectoryEntry) => {
           if (get().currentLoadId !== loadId) return;
@@ -188,8 +197,8 @@ export const createMediaSlice: StateCreator<
           const url = createUrl(ent.path);
           get().ensureImageDimension(ent.path, url);
 
+          // For images, we use img.decode() to warm up the cache and GPU
           if (decodingCount >= MAX_DECODE) {
-             // Just set src for browser cache if decoding is busy
              const img = new Image();
              img.src = url;
              return;
@@ -199,18 +208,20 @@ export const createMediaSlice: StateCreator<
           const img = new Image();
           img.src = url;
           try {
+            // decode() suggests the browser should decode the image off-main-thread
             await img.decode();
           } catch {
-            // Ignore decode errors
+            // Ignore decode errors (common on rapid navigation)
           } finally {
             decodingCount--;
           }
         };
 
-        preloads.forEach((ent: DirectoryEntry) => processPreload(ent));
+        preloads.forEach((ent) => processPreload(ent));
       }
     } catch (err) {
       if (get().currentLoadId === loadId) {
+        set({ isLoading: false });
         get().setError(err instanceof Error ? err.message : String(err));
       }
     }

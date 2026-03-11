@@ -4,6 +4,7 @@ import { useViewerStore } from '../stores/viewerStore';
 import type { ViewMode, Binding } from '../stores/layoutStore';
 import { ShortcutSettings } from './ShortcutSettings';
 import { ExternalToolSettings } from './ExternalToolSettings';
+import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
 
 interface Props {
     onClose: () => void;
@@ -24,14 +25,17 @@ export function SettingsModal({ onClose }: Props) {
     const setRecursiveMedia = useLayoutStore((s) => s.setRecursiveMedia);
     const wrapNavigation = useViewerStore((s) => s.wrapNavigation);
     const setWrapNavigation = useViewerStore((s) => s.setWrapNavigation);
-    const currentPath = useViewerStore((s) => s.currentPath);
     const loadDirectory = useViewerStore((s) => s.loadDirectory);
+    
+    const autoPlay = useMediaPlayerStore((s) => s.autoPlay);
+    const setAutoPlay = useMediaPlayerStore((s) => s.setAutoPlay);
 
     const [localViewMode, setLocalViewMode] = useState<ViewMode>(viewMode);
     const [localBinding, setLocalBinding] = useState<Binding>(binding);
     const [localAutoThreshold, setLocalAutoThreshold] = useState(autoThreshold);
     const [localRecursive, setLocalRecursive] = useState(recursiveMedia);
     const [localWrap, setLocalWrap] = useState(wrapNavigation);
+    const [localAutoPlay, setLocalAutoPlay] = useState(autoPlay);
 
     const handleApply = () => {
         setViewMode(localViewMode);
@@ -39,6 +43,7 @@ export function SettingsModal({ onClose }: Props) {
         setAutoThreshold(localAutoThreshold);
         setRecursiveMedia(localRecursive);
         setWrapNavigation(localWrap);
+        setAutoPlay(localAutoPlay);
         saveLayoutToStorage();
         if (localRecursive !== recursiveMedia && currentPath) {
             loadDirectory(currentPath, { pushHistory: false });
@@ -156,6 +161,19 @@ export function SettingsModal({ onClose }: Props) {
                                         onChange={(e) => setLocalRecursive(e.target.checked)}
                                     />
                                     <span>サブフォルダも含めて画像を表示（再帰表示）</span>
+                                </label>
+                            </section>
+
+                            {/* メディア */}
+                            <section className="settings-section">
+                                <h3 className="settings-section-title">メディア</h3>
+                                <label className="settings-toggle">
+                                    <input
+                                        type="checkbox"
+                                        checked={localAutoPlay}
+                                        onChange={(e) => setLocalAutoPlay(e.target.checked)}
+                                    />
+                                    <span>動画・音声を自動再生する</span>
                                 </label>
                             </section>
                         </>

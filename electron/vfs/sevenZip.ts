@@ -19,7 +19,6 @@ function toLongPathIfNeeded(path: string): string {
   return '\\\\?\\' + path.replace(/\//g, '\\');
 }
 const MAX_SINGLE_FILE_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
-const SIZE_THRESHOLD_FOR_TEMP_EXTRACT = 200 * 1024 * 1024; // 200MB
 
 export interface SevenZipEntry {
   path: string;
@@ -334,6 +333,7 @@ export async function extractToTemp(
   const basename = normalized.replace(/.*\//, '');
   return join(destDir, basename);
 }
+import { SIZE_THRESHOLD_FOR_TEMP_EXTRACT, VIDEO_EXT, AUDIO_EXT } from './constants';
 
 export function isLargeFile(size: number): boolean {
   return size > SIZE_THRESHOLD_FOR_TEMP_EXTRACT;
@@ -341,9 +341,7 @@ export function isLargeFile(size: number): boolean {
 
 export function isMediaRequiringTempExtract(path: string): boolean {
   const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
-  const videoExt = ['.mp4', '.webm', '.avi', '.mkv', '.mov', '.wmv', '.m4v'];
-  const audioExt = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'];
-  return videoExt.includes(ext) || audioExt.includes(ext);
+  return VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext);
 }
 
 /**

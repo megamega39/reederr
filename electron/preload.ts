@@ -42,6 +42,7 @@ export interface ReederrAPI {
   onMenuOpenFolder: (cb: (path: string) => void) => () => void;
   onMenuCopyPath: (cb: () => void) => () => void;
   onMenuZoom: (cb: (action: string) => void) => () => void;
+  onMenuHelp: (cb: () => void) => () => void;
   loadStore: () => Promise<Record<string, unknown>>;
   saveStore: (data: Record<string, unknown>) => Promise<void>;
   openWithApp: (path: string, appPath: string) => Promise<{ ok: boolean; error?: string }>;
@@ -125,6 +126,11 @@ const api: ReederrAPI = {
     const fn = (_: unknown, a: string) => cb(a);
     ipcRenderer.on('menu-zoom', fn);
     return () => ipcRenderer.removeListener('menu-zoom', fn);
+  },
+  onMenuHelp: (cb) => {
+    const fn = () => cb();
+    ipcRenderer.on('menu-help', fn);
+    return () => ipcRenderer.removeListener('menu-help', fn);
   },
   loadStore: () => ipcRenderer.invoke('load-store').catch(e => { console.error('[Preload] loadStore error:', e); throw e; }),
   saveStore: (data) => ipcRenderer.invoke('save-store', { data }).catch(e => { console.error('[Preload] saveStore error:', e); throw e; }),

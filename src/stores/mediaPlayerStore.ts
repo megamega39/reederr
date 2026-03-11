@@ -7,12 +7,14 @@ export interface MediaPlayerSettings {
   loopEnabled: boolean;
   playbackRate: number;
   preservesPitch: boolean;
+  autoPlay: boolean;
 }
 
 interface MediaPlayerState extends MediaPlayerSettings {
   setLoopEnabled: (v: boolean) => void;
   setPlaybackRate: (v: number) => void;
   setPreservesPitch: (v: boolean) => void;
+  setAutoPlay: (v: boolean) => void;
   toggleLoop: () => void;
   changePlaybackRate: (delta: number) => void;
   resetPlaybackRate: () => void;
@@ -30,6 +32,7 @@ export const useMediaPlayerStore = create<MediaPlayerState>((set, get) => ({
   loopEnabled: false,
   playbackRate: 1,
   preservesPitch: true,
+  autoPlay: true,
   isHydrated: false,
   isRestoring: false,
 
@@ -48,6 +51,11 @@ export const useMediaPlayerStore = create<MediaPlayerState>((set, get) => ({
 
   setPreservesPitch: (v) => {
     set({ preservesPitch: v });
+    get().saveToStorage();
+  },
+
+  setAutoPlay: (v) => {
+    set({ autoPlay: v });
     get().saveToStorage();
   },
 
@@ -77,6 +85,7 @@ export const useMediaPlayerStore = create<MediaPlayerState>((set, get) => ({
           loopEnabled: typeof state.loopEnabled === 'boolean' ? state.loopEnabled : s.loopEnabled,
           playbackRate: typeof state.playbackRate === 'number' ? clampRate(state.playbackRate) : s.playbackRate,
           preservesPitch: typeof state.preservesPitch === 'boolean' ? state.preservesPitch : s.preservesPitch,
+          autoPlay: typeof state.autoPlay === 'boolean' ? state.autoPlay : s.autoPlay,
           isHydrated: true,
         }));
       } else {
@@ -98,8 +107,8 @@ export const useMediaPlayerStore = create<MediaPlayerState>((set, get) => ({
     // Using a simple timeout for debounce within the store to keep it simple
     // but App.tsx level is usually better for complex stores.
     // For this simple one, we'll just guard it.
-    const { loopEnabled, playbackRate, preservesPitch } = state;
-    const stateToSave = { loopEnabled, playbackRate, preservesPitch };
+    const { loopEnabled, playbackRate, preservesPitch, autoPlay } = state;
+    const stateToSave = { loopEnabled, playbackRate, preservesPitch, autoPlay };
     console.log('[Persistence:MediaPlayer] Saving state...', stateToSave);
     PersistenceAPI.saveStore({
       [MEDIA_PLAYER_KEY]: stateToSave,

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useViewerStore } from '../stores/viewerStore';
 import { normalizePath, isArchivePath, getParentPath, resolveArchivePath } from '../stores/viewerStore.utils';
@@ -21,15 +22,23 @@ interface FlatNode {
 }
 
 export function FolderTree() {
-  const treeRoots = useViewerStore((s) => s.treeRoots);
-  const treeChildren = useViewerStore((s) => s.treeChildren);
-  const expandedPaths = useViewerStore((s) => s.expandedPaths);
-  const favorites = useViewerStore((s) => s.favorites);
-  const currentPath = useViewerStore((s) => s.currentPath);
-  const error = useViewerStore((s) => s.error);
+  const { treeRoots, treeChildren, expandedPaths, favorites, currentPath, error } = useViewerStore(
+    useShallow((s) => ({
+      treeRoots: s.treeRoots,
+      treeChildren: s.treeChildren,
+      expandedPaths: s.expandedPaths,
+      favorites: s.favorites,
+      currentPath: s.currentPath,
+      error: s.error,
+    }))
+  );
 
-  const refreshTreeChildren = useViewerStore((s) => s.refreshTreeChildren);
-  const expandPath = useViewerStore((s) => s.expandPath);
+  const { refreshTreeChildren, expandPath } = useViewerStore(
+    useShallow((s) => ({
+      refreshTreeChildren: s.refreshTreeChildren,
+      expandPath: s.expandPath,
+    }))
+  );
 
   const [favExpanded, setFavExpanded] = useState(true);
 

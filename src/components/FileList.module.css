@@ -3,14 +3,14 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--bg-tree);
+  background: var(--win-bg-white);
   font-family: var(--font-family);
 }
 
 .fileListHeader {
   flex: 0 0 auto;
   display: flex;
-  background: var(--bg-toolbar);
+  background: var(--win-bg);
   border-bottom: 1px solid var(--border-main);
   font-size: var(--font-size-sm);
   font-weight: bold;
@@ -27,12 +27,12 @@
 }
 
 .colHeader:hover {
-  background: var(--bg-hover);
+  background: var(--win-bg-light);
   text-decoration: underline;
 }
 
 .colHeader.sorted {
-  background: var(--bg-selection-light);
+  background: var(--accent-bg-selection-light);
 }
 
 .colName { flex: 4; }
@@ -59,12 +59,12 @@
 }
 
 .item:hover {
-  background: var(--bg-hover);
+  background: var(--win-bg-light);
 }
 
 .item.selected {
-  background: var(--bg-selection);
-  color: var(--text-selection);
+  background: var(--accent-bg-selection);
+  color: var(--accent-text-selection);
 }
 
 .item.selected .itemCol {
@@ -93,7 +93,7 @@
 }
 
 .error {
-  color: #c00;
+  color: var(--text-error);
 }
 
 .loadingOverlay,
@@ -131,8 +131,8 @@
 }
 
 .renameInput::selection {
-  background: var(--bg-selection);
-  color: var(--text-selection);
+  background: var(--accent-bg-selection);
+  color: var(--accent-text-selection);
 }
 
 .itemColIcon {
