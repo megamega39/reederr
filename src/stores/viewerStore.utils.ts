@@ -90,7 +90,7 @@ export function getParentPath(p: string): string | null {
 }
 
 export function getFileTypeForSort(e: DirectoryEntry): string {
-  if (e.isDirectory) return 'フォルダ';
+  if (e.isDirectory) return '_DIR';
   if (e.isArchive) return e.name.slice(e.name.lastIndexOf('.')).toUpperCase();
   const ext = e.name.slice(e.name.lastIndexOf('.')).toLowerCase();
   const map: Record<string, string> = {

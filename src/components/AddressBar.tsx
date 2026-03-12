@@ -3,8 +3,10 @@ import { useViewerStore } from '../stores/viewerStore';
 import { splitArchivePath } from '../../electron/vfs/utils';
 import { ChevronRight, Edit2 } from 'lucide-react';
 import styles from './AddressBar.module.css';
+import { useTranslation } from '../i18n';
 
 export function AddressBar() {
+  const { t } = useTranslation();
   const currentPath = useViewerStore((s) => s.currentPath);
   const loadDirectory = useViewerStore((s) => s.loadDirectory);
 
@@ -80,7 +82,7 @@ export function AddressBar() {
     <div className={styles.addressBar}>
       <div className={styles.label} onClick={startEditing}>
         <Edit2 size={12} style={{ marginRight: 4 }} />
-        アドレス(A)
+        {t('addressBar.label')}
       </div>
       <div className={styles.content}>
         {isEditing ? (
@@ -100,7 +102,7 @@ export function AddressBar() {
               }}
               spellCheck={false}
             />
-            <button type="button" className={styles.goBtn} onClick={() => handleSubmit()} title="移動">
+            <button type="button" className={styles.goBtn} onClick={() => handleSubmit()} title={t('addressBar.go')}>
               →
             </button>
           </form>

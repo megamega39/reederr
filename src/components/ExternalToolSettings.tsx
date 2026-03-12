@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useExternalToolStore } from '../stores/externalToolStore';
 import { SystemAPI } from '../services/api';
+import { useTranslation } from '../i18n';
 
 export function ExternalToolSettings() {
+  const { t } = useTranslation();
   const { tools, addTool, removeTool } = useExternalToolStore();
   const [newToolName, setNewToolName] = useState('');
   const [newToolPath, setNewToolPath] = useState('');
@@ -23,31 +25,31 @@ export function ExternalToolSettings() {
 
   return (
     <div className="external-tool-settings">
-      <h3 className="settings-section-title">外部ツール登録</h3>
-      <p className="settings-description">コンテキストメニューから起動する外部アプリケーションを登録します。</p>
+      <h3 className="settings-section-title">{t('settings.externalToolsTitle')}</h3>
+      <p className="settings-description">{t('settings.toolDesc')}</p>
 
       <div className="tool-add-form">
         <div className="settings-field">
-          <label className="settings-label">ツール名</label>
+          <label className="settings-label">{t('settings.toolName')}</label>
           <input 
             type="text" 
             className="settings-input" 
             value={newToolName} 
             onChange={(e) => setNewToolName(e.target.value)}
-            placeholder="例: Photoshop, メモ帳..."
+            placeholder={t('settings.toolPlaceholderName')}
           />
         </div>
         <div className="settings-field">
-          <label className="settings-label">アプリケーションのパス</label>
+          <label className="settings-label">{t('settings.toolPath')}</label>
           <div className="settings-input-group">
             <input 
               type="text" 
               className="settings-input" 
               value={newToolPath} 
               onChange={(e) => setNewToolPath(e.target.value)}
-              placeholder="C:\Windows\notepad.exe"
+              placeholder={t('settings.toolPlaceholderPath')}
             />
-            <button className="settings-btn" onClick={handleBrowse}>参照...</button>
+            <button className="settings-btn" onClick={handleBrowse}>{t('settings.toolBrowse')}</button>
           </div>
         </div>
         <button 
@@ -55,13 +57,13 @@ export function ExternalToolSettings() {
           onClick={handleAdd}
           disabled={!newToolName.trim() || !newToolPath.trim()}
         >
-          追加
+          {t('settings.toolAdd')}
         </button>
       </div>
 
       <div className="tool-list">
         {tools.length === 0 ? (
-          <p className="settings-empty-msg">登録されているツールはありません。</p>
+          <p className="settings-empty-msg">{t('settings.toolEmpty')}</p>
         ) : (
           tools.map((tool) => (
             <div key={tool.id} className="tool-item">
@@ -69,7 +71,7 @@ export function ExternalToolSettings() {
                 <div className="tool-name">{tool.name}</div>
                 <div className="tool-path">{tool.appPath}</div>
               </div>
-              <button className="tool-remove-btn" onClick={() => removeTool(tool.id)} title="削除">✕</button>
+              <button className="tool-remove-btn" onClick={() => removeTool(tool.id)} title={t('settings.toolDelete')}>✕</button>
             </div>
           ))
         )}

@@ -1,6 +1,8 @@
 import { app, BrowserWindow, protocol } from 'electron';
 import { registerMediaProtocol } from './mediaProtocol';
 import { registerReederrProtocol } from './reederrProtocol';
+import { registerThumbnailProtocol } from './thumbnails/protocol';
+import { ThumbnailGenerator } from './thumbnails/generator';
 import { disposeAllTemp, getMediaPathMap } from './mediaUrlManager';
 import { initArchiveCache } from './vfs/archiveIndexCache';
 import { cleanupTempExtract } from './vfs/rarFS';
@@ -28,6 +30,10 @@ protocol.registerSchemesAsPrivileged([
     scheme: 'reederr',
     privileges: { secure: true, bypassCSP: true, stream: true, standard: true, supportFetchAPI: true },
   },
+  {
+    scheme: 'thumb',
+    privileges: { secure: true, bypassCSP: true, stream: true, standard: true },
+  },
 ]);
 
 let httpMediaServer: { getMediaUrl: (id: string) => string; close: () => void } | null = null;
@@ -38,12 +44,16 @@ app.whenReady().then(async () => {
   initArchiveCache(app.getPath('userData'));
   registerMediaProtocol(getMediaPathMap());
   registerReederrProtocol();
+  registerThumbnailProtocol();
+
+  const thumbnailGenerator = new ThumbnailGenerator(app.getPath('userData'));
+  await thumbnailGenerator.ensureCacheDir();
   
   httpMediaServer = await createHttpMediaServer(getMediaPathMap());
   
   // Register handlers BEFORE creating the window so they are ready when renderer loads
   const windowGetter = () => getMainWindow();
-  registerIpcHandlers(windowGetter, httpMediaServer);
+  registerIpcHandlers(windowGetter, httpMediaServer, thumbnailGenerator);
   
   const mainWindow = createWindow();
   buildMenu(mainWindow);
@@ -51,7 +61,7 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       const win = createWindow();
-      registerIpcHandlers(windowGetter, httpMediaServer);
+      registerIpcHandlers(windowGetter, httpMediaServer, thumbnailGenerator);
       buildMenu(win);
     }
   });

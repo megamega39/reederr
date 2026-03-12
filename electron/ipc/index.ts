@@ -9,8 +9,17 @@ import { listDirectory, readFile, stat, prefetchArchiveIndex } from '../vfs';
 import { getMediaUrl, disposeMediaIdFromUrl } from '../mediaUrlManager';
 import { loadSettings, saveSettings, loadConfig, saveConfig } from '../settings';
 import { getDrives, getSpecialFolders } from '../drives';
+import { buildMenu } from '../menu';
+import { FileWatcher } from '../vfs/watcher';
+import type { ThumbnailGenerator } from '../thumbnails/generator';
 
-export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null, httpMediaServer: any) {
+let fileWatcher: FileWatcher | null = null;
+
+export function registerIpcHandlers(
+  getMainWindow: () => BrowserWindow | null, 
+  httpMediaServer: any,
+  thumbnailGenerator: ThumbnailGenerator
+) {
   ipcMain.handle('is-7z-available', (): boolean => is7zAvailable());
 
   ipcMain.handle(
@@ -146,6 +155,10 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null, h
 
   ipcMain.handle('get-special-folders', () => getSpecialFolders());
   ipcMain.handle('get-drives', () => getDrives());
+  ipcMain.handle('get-network-resources', () => {
+    const { getNetworkResources } = require('../drives');
+    return getNetworkResources();
+  });
 
   ipcMain.handle('open-in-explorer', async (_e, { path: folderPath }: { path: string }): Promise<void> => {
     if (folderPath && existsSync(folderPath)) {
@@ -244,4 +257,37 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null, h
       }
     }
   );
+
+  ipcMain.handle('rebuild-menu', (_e, { lang }: { lang: 'ja' | 'en' }): void => {
+    const win = getMainWindow();
+    if (win) {
+      buildMenu(win, lang);
+    }
+  });
+
+  ipcMain.handle('watch-directory', (_e, { path }: { path: string }): void => {
+    if (!fileWatcher) {
+      fileWatcher = new FileWatcher((changedPath) => {
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('file-system-changed', { path: changedPath });
+        }
+      });
+    }
+    fileWatcher.watch(path);
+  });
+
+  ipcMain.handle('get-thumbnail', async (_e, { path, width, height }: { path: string; width: number; height: number }): Promise<string | null> => {
+    try {
+      const resultPath = await thumbnailGenerator.getThumbnail(path, { width, height });
+      if (resultPath) {
+        // Use a dummy host 'cache' to prevent Chromium's URL normalization 
+        // from losing the Windows drive colon (e.g. C: -> c).
+        return `thumb://cache/${resultPath.replace(/\\/g, '/')}`;
+      }
+      return null;
+    } catch (err) {
+      return null;
+    }
+  });
 }

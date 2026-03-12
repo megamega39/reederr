@@ -5,16 +5,18 @@ import {
     Maximize2,
     BookOpen,
     Book,
-    Grid,
     Monitor,
     Wand2,
-    ArrowRight,
     ArrowLeft,
+    ArrowRight,
 } from 'lucide-react';
 import { useLayoutStore } from '../stores/layoutStore';
 import styles from './ViewerToolbar.module.css';
+import { useTranslation } from '../i18n';
+import { MediaAPI } from '../services/api';
 
 export function ToolbarLayout() {
+    const { t } = useTranslation();
     const {
         scaleMode,
         setScaleMode,
@@ -22,40 +24,40 @@ export function ToolbarLayout() {
         setViewMode,
         binding,
         setBinding,
-        catalogMode,
-        setCatalogMode,
-        autoSpreadCover,
-        setAutoSpreadCover,
-        togglePreviewFullscreen
+        isPreviewFullscreen,
     } = useLayoutStore();
+
+    const handleToggleFullscreen = () => {
+        MediaAPI.setPreviewFullscreen(!isPreviewFullscreen);
+    };
 
     return (
         <div className={`${styles.btnGroup} ${styles.right}`}>
             {/* スケーリング */}
             <button
                 onClick={() => setScaleMode('fit-window')}
-                title="ウィンドウに合わせる"
+                title={t('statusBar.scaleFitWindow')}
                 className={`${styles.btn} ${scaleMode === 'fit-window' ? styles.btnActive : ''}`}
             >
                 <Maximize size={18} />
             </button>
             <button
                 onClick={() => setScaleMode('fit-width')}
-                title="幅に合わせる"
+                title={t('statusBar.scaleFitWidth')}
                 className={`${styles.btn} ${scaleMode === 'fit-width' ? styles.btnActive : ''}`}
             >
                 <StretchHorizontal size={18} />
             </button>
             <button
                 onClick={() => setScaleMode('fit-height')}
-                title="高さに合わせる"
+                title={t('statusBar.scaleFitHeight')}
                 className={`${styles.btn} ${scaleMode === 'fit-height' ? styles.btnActive : ''}`}
             >
                 <StretchVertical size={18} />
             </button>
             <button
                 onClick={() => setScaleMode('original')}
-                title="原寸大"
+                title={t('statusBar.scaleOriginal')}
                 className={`${styles.btn} ${scaleMode === 'original' ? styles.btnActive : ''}`}
             >
                 <Maximize2 size={18} />
@@ -63,17 +65,10 @@ export function ToolbarLayout() {
 
             <div className={styles.sep} />
 
-            {/* 基本の切り替えボタン */}
-            <button
-                onClick={() => setViewMode(viewMode === 'single' ? 'spread' : 'single')}
-                title={viewMode === 'single' ? '見開き表示' : '単独表示'}
-                className={styles.btn}
-            >
-                {viewMode === 'single' ? <BookOpen size={18} /> : <Book size={18} />}
-            </button>
+            {/* 綴じ方向 */}
             <button
                 onClick={() => setBinding(binding === 'rtl' ? 'ltr' : 'rtl')}
-                title={binding === 'rtl' ? '左開きに変更' : '右開きに変更'}
+                title={binding === 'rtl' ? t('toolbar.bindingLTR') : t('toolbar.bindingRTL')}
                 className={styles.btn}
             >
                 {binding === 'rtl' ? <ArrowLeft size={18} /> : <ArrowRight size={18} />}
@@ -84,32 +79,22 @@ export function ToolbarLayout() {
             {/* モード切り替え */}
             <button
                 onClick={() => setViewMode('auto')}
-                title="自動見開き (Auto Spread)"
+                title={t('toolbar.scaleAuto')}
                 className={`${styles.btn} ${viewMode === 'auto' ? styles.btnActive : ''}`}
             >
                 <Wand2 size={18} />
             </button>
 
-            {viewMode === 'auto' && (
-                <button
-                    onClick={() => setAutoSpreadCover(!autoSpreadCover)}
-                    title={`表紙（1ページ目）の単独表示: ${autoSpreadCover ? 'ON' : 'OFF'}`}
-                    className={`${styles.btn} ${autoSpreadCover ? styles.btnActive : ''}`}
-                >
-                    <Book size={18} />
-                </button>
-            )}
-
             <button
                 onClick={() => setViewMode('single')}
-                title="単ページ表示"
+                title={t('toolbar.scaleSingle')}
                 className={`${styles.btn} ${viewMode === 'single' ? styles.btnActive : ''}`}
             >
                 <Book size={18} />
             </button>
             <button
                 onClick={() => setViewMode('spread')}
-                title="見開き表示"
+                title={t('toolbar.scaleSpread')}
                 className={`${styles.btn} ${viewMode === 'spread' ? styles.btnActive : ''}`}
             >
                 <BookOpen size={18} />
@@ -118,17 +103,9 @@ export function ToolbarLayout() {
             <div className={styles.sep} />
 
             <button
-                onClick={() => setCatalogMode(!catalogMode)}
-                title="カタログモード"
-                className={`${styles.btn} ${catalogMode ? styles.btnActive : ''}`}
-            >
-                <Grid size={18} />
-            </button>
-
-            <button
-                onClick={togglePreviewFullscreen}
-                title="全画面"
-                className={styles.btn}
+                onClick={handleToggleFullscreen}
+                title={t('toolbar.fullscreen')}
+                className={`${styles.btn} ${isPreviewFullscreen ? styles.btnActive : ''}`}
             >
                 <Monitor size={18} />
             </button>

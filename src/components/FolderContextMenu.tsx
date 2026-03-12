@@ -4,6 +4,7 @@ import { useViewerStore } from '../stores/viewerStore';
 import { FileSystemAPI, SystemAPI } from '../services/api';
 import { useExternalToolStore } from '../stores/externalToolStore';
 import { RenameOverlay } from './RenameOverlay';
+import { useTranslation } from '../i18n';
 
 export interface FolderContextMenuProps {
   x: number;
@@ -26,6 +27,7 @@ export function FolderContextMenu({
   onExpand,
   onClose,
 }: FolderContextMenuProps) {
+  const { t } = useTranslation();
   const externalTools = useExternalToolStore((s) => s.tools);
   const [showRename, setShowRename] = useState(false);
   const [showCreateFolderOverlay, setShowCreateFolderOverlay] = useState(false);
@@ -123,7 +125,7 @@ export function FolderContextMenu({
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('このフォルダをごみ箱に移動しますか？')) {
+    if (!window.confirm(t('dialog.confirmDeleteFolder'))) {
       onClose();
       return;
     }
@@ -150,36 +152,36 @@ export function FolderContextMenu({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="folder-context-menu-item" onClick={handleToggleFavorite}>
-        {isFav ? '☆ お気に入りから解除' : '⭐ お気に入りに追加'}
+        {isFav ? t('contextMenu.removeFavorite') : t('contextMenu.addFavorite')}
       </div>
       <div className="folder-context-menu-sep" />
       <div className="folder-context-menu-item" onClick={handleOpenInExplorer}>
-        エクスプローラで開く
+        {t('contextMenu.openInExplorer')}
       </div>
       <div className="folder-context-menu-sep" />
       <div className="folder-context-menu-item" onClick={handleCopyPath}>
-        パスをコピー
+        {t('contextMenu.copyPath')}
       </div>
       {parentPath && (
         <div className="folder-context-menu-item" onClick={handleCopyParentPath}>
-          親フォルダのパスをコピー
+          {t('contextMenu.copyParentPath')}
         </div>
       )}
       <div className="folder-context-menu-item" onClick={handleShowInExplorer}>
-        エクスプローラでフォルダを表示
+        {t('contextMenu.showInExplorer')}
       </div>
       <div className="folder-context-menu-sep" />
       <div className="folder-context-menu-item" onClick={handleCreateFolder}>
-        フォルダの作成
+        {t('contextMenu.createFolder')}
       </div>
       <div className="folder-context-menu-item" onClick={handleRename}>
-        名前の変更
+        {t('contextMenu.rename')}
       </div>
       <div className="folder-context-menu-item" onClick={handleDelete}>
-        削除
+        {t('contextMenu.delete')}
       </div>
       <div className="folder-context-menu-item" onClick={handleExpand}>
-        展開
+        {t('contextMenu.expand')}
       </div>
       {externalTools.length > 0 && <div className="folder-context-menu-sep" />}
       {externalTools.map((tool) => (
@@ -191,7 +193,7 @@ export function FolderContextMenu({
             onClose();
           }}
         >
-          {tool.name} で開く
+          {t('contextMenu.openWith', { name: tool.name })}
         </div>
       ))}
       {showRename && (
@@ -206,8 +208,8 @@ export function FolderContextMenu({
       )}
       {showCreateFolderOverlay && (
         <RenameOverlay
-          title="フォルダの作成"
-          initialValue="新しいフォルダ"
+          title={t('dialog.createFolderTitle')}
+          initialValue={t('dialog.newFolderDefaultName')}
           onSave={onCreateFolderSave}
           onCancel={() => {
             setShowCreateFolderOverlay(false);

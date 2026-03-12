@@ -13,7 +13,7 @@ interface FileIconProps {
   path: string;
   isDirectory?: boolean;
   className?: string;
-  size?: 16 | 20;
+  size?: number;
 }
 
 export function FileIcon({
@@ -22,7 +22,7 @@ export function FileIcon({
   className = '',
   size = 16,
 }: FileIconProps) {
-  const iconSizeNum: 16 | 20 = size === 20 ? 20 : 16;
+  const iconSizeNum: 16 | 20 = size >= 20 ? 20 : 16;
   const cacheKey = path ? getCacheKey(path, iconSizeNum) : '';
   const [dataUrl, setDataUrl] = useState<string | null>(() =>
     cacheKey ? (iconCache.get(cacheKey) ?? null) : null

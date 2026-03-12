@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import styles from './HelpModal.module.css';
+import { useTranslation } from '../i18n';
 
 interface Props {
   onClose: () => void;
@@ -8,22 +9,23 @@ interface Props {
 type Tab = 'basics' | 'shortcuts' | 'features';
 
 export function HelpModal({ onClose }: Props) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>('basics');
 
   const renderBasics = () => (
     <div className={styles.helpContent}>
       <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>マウス操作</h3>
+        <h3 className={styles.sectionTitle}>{t('help.basics.mouse')}</h3>
         <ul className={styles.list}>
-          <li><strong>左クリック</strong>: ファイルの選択 / フォルダの展開</li>
-          <li><strong>ダブルクリック</strong>: 全画面表示の切り替え</li>
-          <li><strong>右クリック</strong>: コンテキストメニュー表示</li>
-          <li><strong>マウスホイール</strong>: 前後のページへ移動（ビューア上）</li>
+          <li><strong>{t('common.ok')}</strong>: {t('help.basics.click')}</li>
+          <li><strong>{t('common.doubleClick' as any)}</strong>: {t('help.basics.doubleClick')}</li>
+          <li><strong>{t('common.rightClick' as any)}</strong>: {t('help.basics.rightClick')}</li>
+          <li><strong>{t('common.mouseWheel' as any)}</strong>: {t('help.basics.wheel')}</li>
         </ul>
       </section>
       <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>ナビゲーション</h3>
-        <p>左側のフォルダツリーとファイルリストを使ってメディアを選択します。アーカイブ（ZIP/7z等）は通常のフォルダと同じように中身を直接ブラウズできます。</p>
+        <h3 className={styles.sectionTitle}>{t('help.basics.navTitle')}</h3>
+        <p>{t('help.basics.navDesc')}</p>
       </section>
     </div>
   );
@@ -31,15 +33,15 @@ export function HelpModal({ onClose }: Props) {
   const renderShortcuts = () => (
     <div className={styles.helpContent}>
       <div className={styles.shortcutGrid}>
-        <div className={styles.shortcutItem}><kbd>Left</kbd> / <kbd>Right</kbd><span>前のファイル / 次のファイル</span></div>
-        <div className={styles.shortcutItem}><kbd>Space</kbd> / <kbd>Backspace</kbd><span>次のページ / 前のページ</span></div>
-        <div className={styles.shortcutItem}><kbd>Home</kbd> / <kbd>End</kbd><span>先頭へ / 末尾へ</span></div>
-        <div className={styles.shortcutItem}><kbd>Alt</kbd>+<kbd>Up</kbd><span>上の階層へ移動</span></div>
-        <div className={styles.shortcutItem}><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd><span>1枚表示 / 見開き / 自動判定</span></div>
-        <div className={styles.shortcutItem}><kbd>F11</kbd><span>全画面表示</span></div>
-        <div className={styles.shortcutItem}><kbd>F2</kbd><span>ファイル名の変更（インライン）</span></div>
-        <div className={styles.shortcutItem}><kbd>Ctrl</kbd>+<kbd>F</kbd><span>ファイル検索（フィルタ）にフォーカス</span></div>
-        <div className={styles.shortcutItem}><kbd>F1</kbd><span>このヘルプを表示</span></div>
+        <div className={styles.shortcutItem}><kbd>Left</kbd> / <kbd>Right</kbd><span>{t('help.shortcuts.prevNext')}</span></div>
+        <div className={styles.shortcutItem}><kbd>Space</kbd> / <kbd>Backspace</kbd><span>{t('help.shortcuts.pagePrevNext')}</span></div>
+        <div className={styles.shortcutItem}><kbd>Home</kbd> / <kbd>End</kbd><span>{t('help.shortcuts.firstLast')}</span></div>
+        <div className={styles.shortcutItem}><kbd>Alt</kbd>+<kbd>Up</kbd><span>{t('help.shortcuts.upDir')}</span></div>
+        <div className={styles.shortcutItem}><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd><span>{t('help.shortcuts.viewModes')}</span></div>
+        <div className={styles.shortcutItem}><kbd>F11</kbd><span>{t('help.shortcuts.fullscreen')}</span></div>
+        <div className={styles.shortcutItem}><kbd>F2</kbd><span>{t('help.shortcuts.rename')}</span></div>
+        <div className={styles.shortcutItem}><kbd>Ctrl</kbd>+<kbd>F</kbd><span>{t('help.shortcuts.filter')}</span></div>
+        <div className={styles.shortcutItem}><kbd>F1</kbd><span>{t('help.shortcuts.help')}</span></div>
       </div>
     </div>
   );
@@ -47,16 +49,16 @@ export function HelpModal({ onClose }: Props) {
   const renderFeatures = () => (
     <div className={styles.helpContent}>
       <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>リアルタイムフィルタ</h3>
-        <p>ファイルリスト上部の入力欄に文字を入力すると、その文字を含むファイルのみを瞬時に絞り込みます。</p>
+        <h3 className={styles.sectionTitle}>{t('help.features.filterTitle')}</h3>
+        <p>{t('help.features.filterDesc')}</p>
       </section>
       <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>アーカイブ・ストリーミング</h3>
-        <p>圧縮ファイルを解凍することなく、中身を直接表示・再生できます。大きな動画ファイルもストリーミング再生に対応しています。</p>
+        <h3 className={styles.sectionTitle}>{t('help.features.archiveTitle')}</h3>
+        <p>{t('help.features.archiveDesc')}</p>
       </section>
       <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>外部ツール連携</h3>
-        <p>右クリックメニューから、Photoshop や他のメディアプレイヤーでファイルを開くことができます（設定から追加可能）。</p>
+        <h3 className={styles.sectionTitle}>{t('help.features.externalTitle')}</h3>
+        <p>{t('help.features.externalDesc')}</p>
       </section>
     </div>
   );
@@ -65,7 +67,7 @@ export function HelpModal({ onClose }: Props) {
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
-          <span className={styles.title}>Reederr 使い方ガイド</span>
+          <span className={styles.title}>{t('help.title')}</span>
           <button className={styles.closeBtn} onClick={onClose}>✕</button>
         </div>
         
@@ -74,19 +76,19 @@ export function HelpModal({ onClose }: Props) {
             className={`${styles.tabBtn} ${activeTab === 'basics' ? styles.active : ''}`}
             onClick={() => setActiveTab('basics')}
           >
-            基本操作
+            {t('help.tabs.basics')}
           </button>
           <button 
             className={`${styles.tabBtn} ${activeTab === 'shortcuts' ? styles.active : ''}`}
             onClick={() => setActiveTab('shortcuts')}
           >
-            ショートカット
+            {t('help.tabs.shortcuts')}
           </button>
           <button 
             className={`${styles.tabBtn} ${activeTab === 'features' ? styles.active : ''}`}
             onClick={() => setActiveTab('features')}
           >
-            便利な機能
+            {t('help.tabs.features')}
           </button>
         </div>
 
@@ -97,7 +99,7 @@ export function HelpModal({ onClose }: Props) {
         </div>
 
         <div className={styles.footer}>
-          <button className={styles.okBtn} onClick={onClose}>閉じる</button>
+          <button className={styles.okBtn} onClick={onClose}>{t('common.close')}</button>
         </div>
       </div>
     </div>

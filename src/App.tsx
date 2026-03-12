@@ -14,6 +14,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { HelpModal } from './components/HelpModal';
 import { PersistenceManager } from './components/PersistenceManager';
 import { ToastContainer } from './components/ToastContainer';
+import { HoverPreview } from './components/HoverPreview';
 import { useGlobalKeyboardShortcuts } from './hooks/useGlobalKeyboardShortcuts';
 import { useIpcMenuHandlers } from './hooks/useIpcMenuHandlers';
 import { useSystemNotifications } from './hooks/useSystemNotifications';
@@ -141,6 +142,7 @@ export default function App() {
         <div className={styles.statusBarWrapper}>
           <StatusBar />
         </div>
+        <HoverPreview />
         <ToastContainer />
       </div>
     </ErrorBoundary>

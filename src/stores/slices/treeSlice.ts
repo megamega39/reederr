@@ -57,7 +57,7 @@ export const createTreeSlice: StateCreator<
   ensureTreeChildren: async (idOrPath) => {
     // Extract raw path if it's an ID (has prefix)
     let rawPath = idOrPath;
-    if (idOrPath.startsWith('pc-') || idOrPath.startsWith('special-') || idOrPath.startsWith('favorite-')) {
+    if (idOrPath.startsWith('pc-') || idOrPath.startsWith('special-') || idOrPath.startsWith('favorite-') || idOrPath.startsWith('network-')) {
       rawPath = idOrPath.slice(idOrPath.indexOf('-') + 1);
     }
 
@@ -70,6 +70,9 @@ export const createTreeSlice: StateCreator<
       if (resolvedPath === 'pc') {
         const drives = await FileSystemAPI.getDrives();
         children = drives.map((d) => ({ ...d, isDirectory: true, isArchive: false }));
+      } else if (resolvedPath === 'network') {
+        const resources = await FileSystemAPI.getNetworkResources();
+        children = resources.map((r) => ({ ...r, isDirectory: true, isArchive: false }));
       } else {
         const result = await FileSystemAPI.listDirectory(resolvedPath);
         const resultFiles = result && typeof result === 'object' && 'files' in result ? (result as { files: DirectoryEntry[] }).files : [];
@@ -106,7 +109,8 @@ export const createTreeSlice: StateCreator<
         }
         const roots = await FileSystemAPI.getSpecialFolders();
         const pc = { name: 'PC', path: 'pc' };
-        setTreeRoots([...roots, pc]);
+        const network = { name: 'network', path: 'network' };
+        setTreeRoots([...roots, pc, network]);
 
         if (!get().currentPath && roots.length >= 3) {
           const downloadsPath = roots[2].path;
@@ -139,105 +143,89 @@ export const createTreeSlice: StateCreator<
     if (!path || path === 'pc') return;
     const { treeRoots, favorites, ensureTreeChildren } = get();
     
-    // Normalize target path
     const targetPath = normalizePath(path);
     const targetPathLower = targetPath.toLowerCase();
 
-    // 1. Find the best starting point (Favorite or Special Root)
-    const candidates = [
-      ...favorites.map(f => ({ name: f.name, path: f.path, type: 'favorite' })),
-      ...treeRoots.filter(r => r.path !== 'pc').map(r => ({ name: r.name, path: r.path, type: 'special' }))
+    // 1. Find the best starting root
+    const roots = [
+      ...favorites.map(f => ({ path: f.path, type: 'favorite' as const })),
+      ...treeRoots.filter(r => r.path !== 'pc').map(r => ({ path: r.path, type: 'special' as const }))
     ];
 
-    let bestMatch: { name: string, path: string, type: string } | null = null;
-    for (const cand of candidates) {
-      const normCand = normalizePath(cand.path).toLowerCase();
-      // Use robust matching that respects archive boundaries
-      if (targetPathLower === normCand || targetPathLower.startsWith(normCand + '/') || targetPathLower.match(new RegExp('^' + normCand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[!]'))) {
-        if (!bestMatch || cand.path.length > bestMatch.path.length) {
-          bestMatch = cand;
-        } else if (cand.path.length === bestMatch.path.length && cand.type === 'favorite') {
-          bestMatch = cand;
+    let root: { path: string, type: 'favorite' | 'special' } | null = null;
+    for (const r of roots) {
+      const normR = normalizePath(r.path).toLowerCase();
+      // Match exactly, or as a parent directory, or as an archive file boundary
+      if (targetPathLower === normR || targetPathLower.startsWith(normR + '/') || targetPathLower.match(new RegExp('^' + normR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[!]'))) {
+        if (!root || r.path.length > root.path.length) {
+          root = r;
         }
       }
     }
 
-    // 2. Build the breadcrumb of IDs to expand
-    const ancestors: string[] = [];
-    if (bestMatch) {
-      const prefix = bestMatch.type === 'favorite' ? 'favorite' : 'special';
-      ancestors.push(`${prefix}-${normalizePath(bestMatch.path)}`);
+    // 2. Build expansion breadcrumbs
+    const breadcrumbs: string[] = [];
+    if (root) {
+      const prefix = root.type;
+      const rootPath = normalizePath(root.path);
+      breadcrumbs.push(`${prefix}-${rootPath}`);
       
-      const subPath = targetPath.slice(bestMatch.path.length).replace(/^[/\\]+/, '');
-      if (subPath) {
-        let currentPathAcc = bestMatch.path;
-        
-        // Reconstruct segment by segment
-        const parts = subPath.split(/[/\\]/);
+      const sub = targetPath.slice(rootPath.length).replace(/^[/\\]+/, '');
+      if (sub) {
+        let acc = rootPath;
+        const parts = sub.split(/[/\\]/);
         for (const part of parts) {
           if (!part) continue;
-          
           if (part.includes('!')) {
-            const segments = part.split('!');
-            const archiveFileName = segments[0];
-            
-            // Add the archive file itself
-            currentPathAcc += (currentPathAcc.endsWith('/') ? '' : '/') + archiveFileName;
-            ancestors.push(`${prefix}-${normalizePath(currentPathAcc)}`);
-            
-            // Add segments inside the archive
-            currentPathAcc += '!';
-            for (let i = 1; i < segments.length; i++) {
-              if (segments[i]) {
-                currentPathAcc += (i > 1 ? '/' : '') + segments[i];
-                ancestors.push(`${prefix}-${normalizePath(currentPathAcc)}`);
+            const [archive, ...rest] = part.split('!');
+            acc += (acc.endsWith('/') ? '' : '/') + archive;
+            breadcrumbs.push(`${prefix}-${normalizePath(acc)}`);
+            acc += '!';
+            for (let i = 0; i < rest.length; i++) {
+              if (rest[i]) {
+                acc += (i > 0 ? '/' : '') + rest[i];
+                breadcrumbs.push(`${prefix}-${normalizePath(acc)}`);
               }
             }
           } else {
-            const sep = (currentPathAcc.endsWith('/') || currentPathAcc.endsWith('!')) ? '' : '/';
-            currentPathAcc += sep + part;
-            ancestors.push(`${prefix}-${normalizePath(currentPathAcc)}`);
+            acc += (acc.endsWith('/') || acc.endsWith('!')) ? '' : '/';
+            acc += part;
+            breadcrumbs.push(`${prefix}-${normalizePath(acc)}`);
           }
         }
       }
     } else {
-      // Fallback to PC root
-      ancestors.push('pc-pc');
-      const normTarget = normalizePath(targetPath);
-      let currentPathAcc = '';
-      
-      const parts = normTarget.split(/[/\\]/);
+      // Fallback: PC root
+      breadcrumbs.push('pc-pc');
+      let acc = '';
+      const parts = targetPath.split(/[/\\]/);
       for (const part of parts) {
         if (!part) continue;
-        
         if (part.includes('!')) {
-          const segments = part.split('!');
-          const archiveFileName = segments[0];
-          
-          if (currentPathAcc && !currentPathAcc.endsWith('/') && !currentPathAcc.endsWith('!')) currentPathAcc += '/';
-          currentPathAcc += archiveFileName;
-          ancestors.push(`pc-${normalizePath(currentPathAcc)}`);
-          
-          currentPathAcc += '!';
-          for (let i = 1; i < segments.length; i++) {
-            if (segments[i]) {
-              currentPathAcc += (i > 1 ? '/' : '') + segments[i];
-              ancestors.push(`pc-${normalizePath(currentPathAcc)}`);
+          const [archive, ...rest] = part.split('!');
+          if (acc && !acc.endsWith('/') && !acc.endsWith('!')) acc += '/';
+          acc += archive;
+          breadcrumbs.push(`pc-${normalizePath(acc)}`);
+          acc += '!';
+          for (let i = 0; i < rest.length; i++) {
+            if (rest[i]) {
+              acc += (i > 0 ? '/' : '') + rest[i];
+              breadcrumbs.push(`pc-${normalizePath(acc)}`);
             }
           }
         } else {
-          if (currentPathAcc && !currentPathAcc.endsWith('/') && !currentPathAcc.endsWith('!')) currentPathAcc += '/';
-          currentPathAcc += part;
-          ancestors.push(`pc-${normalizePath(currentPathAcc)}`);
+          if (acc && !acc.endsWith('/') && !acc.endsWith('!')) acc += '/';
+          acc += part;
+          breadcrumbs.push(`pc-${normalizePath(acc)}`);
         }
       }
     }
 
-    // 3. Sequentially expand and ensure children
-    const uniqueAncestors = Array.from(new Set(ancestors));
-    for (const ancId of uniqueAncestors) {
-      set((s) => ({ expandedPaths: { ...s.expandedPaths, [ancId]: true } }));
-      await ensureTreeChildren(ancId);
+    // 3. Sequential expansion
+    const uniqueIds = Array.from(new Set(breadcrumbs));
+    for (const id of uniqueIds) {
+      set((s) => ({ expandedPaths: { ...s.expandedPaths, [id]: true } }));
+      await ensureTreeChildren(id);
     }
   },
 });

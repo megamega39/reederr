@@ -7,8 +7,10 @@ import { MediaAPI } from '../services/api';
 import { MediaVideo } from './MediaVideo';
 import { MediaAudio } from './MediaAudio';
 import styles from './MediaView.module.css';
+import { useTranslation } from '../i18n';
 
 export const MediaView = memo(() => {
+  const { t } = useTranslation();
   const mediaBlobUrl = useViewerStore((s) => s.mediaBlobUrl);
   const mediaBlobUrls = useViewerStore((s) => s.mediaBlobUrls);
   const mediaType = useViewerStore((s) => s.mediaType);
@@ -86,7 +88,7 @@ export const MediaView = memo(() => {
   if (!entry) {
     return (
       <div className={`${styles.mediaView} ${styles.empty}`}>
-        <div className={styles.placeholder}>画像・動画・音楽を選択してください</div>
+        <div className={styles.placeholder}>{t('media.audioPlaceholder')}</div>
       </div>
     );
   }
@@ -96,7 +98,10 @@ export const MediaView = memo(() => {
       <div className={`${styles.mediaView} ${styles.error}`}>
         <div className={styles.errorIcon}>⚠️</div>
         <div className={styles.errorMessage}>{error}</div>
-        <button className={styles.retryButton} onClick={() => selectedPath && loadMedia(selectedPath)}>再読み込み</button>
+        <div className={styles.errorActions}>
+          <button className={styles.retryButton} onClick={() => selectedPath && loadMedia(selectedPath)}>{t('common.retry')}</button>
+          <button className={styles.backButton} onClick={() => useViewerStore.getState().goBack()}>{t('common.back')}</button>
+        </div>
       </div>
     );
   }
@@ -105,7 +110,7 @@ export const MediaView = memo(() => {
     return (
       <div className={`${styles.mediaView} ${styles.loading}`}>
         <div className={styles.spinner} />
-        <div className={styles.loadingText}>動画を準備しています...</div>
+        <div className={styles.loadingText}>{t('media.videoPreparing')}</div>
       </div>
     );
   }
@@ -132,7 +137,7 @@ export const MediaView = memo(() => {
   return (
     <div key={entry?.path ?? 'empty'} className={`${styles.mediaView} ${!entry ? styles.empty : styles[`mediaView--${mediaType}`] || ''}`} onDoubleClick={handleDoubleClick}>
       {!entry ? (
-        <div className={styles.placeholder}>画像・動画・音楽を選択してください</div>
+        <div className={styles.placeholder}>{t('media.audioPlaceholder')}</div>
       ) : mediaType === 'audio' ? (
         <MediaAudio
           src={mediaBlobUrl ?? ''}

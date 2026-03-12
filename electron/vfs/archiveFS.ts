@@ -5,6 +5,7 @@ import { get7zPath } from '../sevenZipPath';
 import { getArchiveIndex } from './archiveIndexCache';
 import { extractToStdout, extractToStream } from './sevenZip';
 import { splitArchivePath } from './utils';
+import { logger } from '../utils/logger';
 
 import { ARCHIVE_EXT_REGEX, isArchiveExtension } from './utils';
 
@@ -110,12 +111,6 @@ async function listZipVia7z(
         mtime: e.mtime,
       });
     }
-    console.log('[Reederr VFS] listZipVia7z(recursive)', {
-      totalRawEntries,
-      filesInIndex,
-      prefix: prefixNorm,
-      matchingMediaCount: result.length,
-    });
     result.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     return result;
   }
@@ -164,15 +159,6 @@ async function listZipVia7z(
     return listZipVia7z(archivePath, soleDir + '/', false);
   }
 
-  console.log('[Reederr VFS] listZipVia7z', {
-    totalRawEntries,
-    filesInIndex,
-    prefix: prefixNorm,
-    matchingBeforeSeen: matchingCount,
-    entriesAfterFilter: result.length,
-    entryNames: result.map((r) => r.name),
-  });
-
   result.sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
     return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
@@ -197,8 +183,15 @@ export async function readFileFromArchive(path: string): Promise<ArrayBuffer> {
       '7-Zip (7z.exe) が見つかりません。ZIP/CBZ を開くには tools/7zip に 7z.exe と 7z.dll を配置してください。'
     );
   }
-  const buf = await extractToStdout(archivePath, innerPath);
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  
+  try {
+    logger.debug(`[ArchiveFS] Reading: ${archivePath}!${innerPath}`);
+    const buf = await extractToStdout(archivePath, innerPath);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  } catch (err) {
+    logger.error(`[ArchiveFS] Failed to read ${innerPath} from ${archivePath}:`, err);
+    throw err;
+  }
 }
 
 export async function statFromArchive(path: string): Promise<FileStats | null> {

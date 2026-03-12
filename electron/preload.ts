@@ -47,6 +47,10 @@ export interface ReederrAPI {
   saveStore: (data: Record<string, unknown>) => Promise<void>;
   openWithApp: (path: string, appPath: string) => Promise<{ ok: boolean; error?: string }>;
   onShowToast: (cb: (message: string, type: 'info' | 'success' | 'warn' | 'error', duration?: number) => void) => () => void;
+  rebuildMenu: (lang: string) => Promise<void>;
+  watchDirectory: (path: string) => Promise<void>;
+  onFileSystemChanged: (cb: (payload: { path: string }) => void) => () => void;
+  getThumbnail: (path: string, width: number, height: number) => Promise<string | null>;
 }
 
 const api: ReederrAPI = {
@@ -139,6 +143,14 @@ const api: ReederrAPI = {
     ipcRenderer.on('show-toast', fn);
     return () => ipcRenderer.removeListener('show-toast', fn);
   },
+  rebuildMenu: (lang) => ipcRenderer.invoke('rebuild-menu', { lang }),
+  watchDirectory: (path) => ipcRenderer.invoke('watch-directory', { path }),
+  onFileSystemChanged: (cb) => {
+    const fn = (_: unknown, payload: { path: string }) => cb(payload);
+    ipcRenderer.on('file-system-changed', fn);
+    return () => ipcRenderer.removeListener('file-system-changed', fn);
+  },
+  getThumbnail: (path: string, width: number, height: number) => ipcRenderer.invoke('get-thumbnail', { path, width, height }),
 };
 
 contextBridge.exposeInMainWorld('reederr', api);

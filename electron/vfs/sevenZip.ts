@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { platform } from 'node:os';
 import { get7zPath } from '../sevenZipPath';
+import { logger } from '../utils/logger';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const WINDOWS_MAX_PATH = 260;
@@ -129,36 +130,46 @@ export interface Run7zOptions {
   timeoutPerMb?: number;
 }
 
+function isPasswordError(stderr: string, stdout: string): boolean {
+  const combined = (stderr + stdout).toLowerCase();
+  return (
+    combined.includes('wrong password') ||
+    combined.includes('enter password') ||
+    combined.includes('password:') ||
+    (combined.includes('encrypted') && (combined.includes('password') || combined.includes('enter')))
+  );
+}
+
 /**
- * 7z コマンドを実行する。
+ * 7z コマンドを実行する低レベルヘルパー。
  */
-export function run7z(
+export async function run7zBase(
   args: string[],
-  options: Run7zOptions = {}
-): Promise<{ stdout: string; stderr: string }> {
+  options: { timeout?: number; binary?: boolean } = {}
+): Promise<{ stdout: string | Buffer; stderr: string }> {
   const exe = get7zPath();
   if (!exe) {
-    return Promise.reject(new Error('7-Zip (7z.exe) not found. Please place 7z.exe and 7z.dll in tools/7zip.'));
+    throw new Error('7-Zip (7z.exe) not found. Please place 7z.exe and 7z.dll in tools/7zip.');
   }
 
   const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
+  const proc = spawn(exe, args, { windowsHide: true, shell: false });
 
-  console.log('[7z Command Args]:', args);
-
-  return new Promise((resolvePromise, reject) => {
-    const proc = spawn(exe, args, {
-      windowsHide: true,
-      shell: false,
-    });
-
+  return new Promise((resolve, reject) => {
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
+    let stdoutLength = 0;
 
-    proc.stdout?.on('data', (chunk: Buffer | string) => {
-      stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
+      stdoutLength += chunk.length;
+      if (options.binary && stdoutLength > MAX_SINGLE_FILE_BYTES) {
+        proc.kill('SIGTERM');
+        reject(new Error('File too large (exceeds 2GB limit)'));
+      }
     });
-    proc.stderr?.on('data', (chunk: Buffer | string) => {
-      stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      stderrChunks.push(chunk);
     });
 
     const timer = setTimeout(() => {
@@ -166,45 +177,44 @@ export function run7z(
       reject(new Error('7-Zip execution timed out'));
     }, timeout);
 
-    function decodeOutput(buf: Buffer): string {
-      if (buf.length === 0) return '';
-      return buf.toString('utf8');
-    }
-
     proc.on('close', (code) => {
       clearTimeout(timer);
-      const rawStdout = Buffer.concat(stdoutChunks);
-      const rawStderr = Buffer.concat(stderrChunks);
-      const stdout = decodeOutput(rawStdout);
-      const stderr = decodeOutput(rawStderr);
-      const combined = (stderr || stdout || '').trim();
-      const rawMsg = combined.toLowerCase();
-      const isPasswordError =
-        rawMsg.includes('wrong password') ||
-        rawMsg.includes('enter password') ||
-        rawMsg.includes('password:') ||
-        (rawMsg.includes('encrypted') && (rawMsg.includes('password') || rawMsg.includes('enter')));
+      const stderr = Buffer.concat(stderrChunks).toString('utf8');
+      const stdoutRaw = Buffer.concat(stdoutChunks);
 
-      if (isPasswordError) {
+      if (isPasswordError(stderr, options.binary ? '' : stdoutRaw.toString('utf8'))) {
         reject(new Error('Encrypted archive. Password-protected archives are not supported.'));
         return;
       }
 
       if (code === 0 || code === 1 || code === 2) {
-        resolvePromise({ stdout, stderr });
+        resolve({
+          stdout: options.binary ? stdoutRaw : stdoutRaw.toString('utf8'),
+          stderr,
+        });
       } else {
-        console.error('[7z Error Output]:', rawStderr.toString('utf8') || '(stderr empty)');
-        if (rawStdout.length > 0) console.error('[7z Error Output] stdout:', stdout);
-        reject(new Error(combined || `7-Zip exited with code ${code}`));
+        const msg = (stderr || stdoutRaw.toString('utf8') || '').trim();
+        reject(new Error(msg || `7-Zip exited with code ${code}`));
       }
     });
 
     proc.on('error', (err) => {
       clearTimeout(timer);
-      console.error('[7z Error Output] spawn error:', err);
       reject(err);
     });
   });
+}
+
+/**
+ * 7z コマンドを実行する。
+ */
+export async function run7z(
+  args: string[],
+  options: Run7zOptions = {}
+): Promise<{ stdout: string; stderr: string }> {
+  logger.info(`[7z Command Args]: ${args.join(' ')}`);
+  const result = await run7zBase(args, { timeout: options.timeout });
+  return { stdout: result.stdout as string, stderr: result.stderr };
 }
 
 /**
@@ -228,77 +238,32 @@ export async function listArchive(archivePath: string): Promise<SevenZipEntry[]>
  */
 export async function extractToStdout(archivePath: string, innerPath: string): Promise<Buffer> {
   rejectZipSlip(innerPath);
-
-  const exe = get7zPath();
-  if (!exe) {
-    throw new Error('7-Zip (7z.exe) not found.');
-  }
-
   const resolved = resolve(archivePath);
   if (!existsSync(resolved)) {
     throw new Error(`Archive not found: ${archivePath}`);
   }
   const absPath = toLongPathIfNeeded(resolved);
+  
+  // Use 'e' (extract without paths) instead of 'x' for stdout extraction of a single file
+  // to avoid potential issues with directory structures in patterns.
+  const args = ['e', '-so', '-y', '-sccUTF-8', '-i!' + innerPath, absPath];
+  logger.info(`[7z Extract Args]: ${args.join(' ')}`);
 
-  // -i!path で厳密にファイルを指定
-  const args = ['x', '-so', '-i!' + innerPath, absPath];
-  console.log('[7z Command Args]:', args);
-
-  return new Promise((resolve, reject) => {
-    const proc = spawn(exe, args, {
-      windowsHide: true,
-      shell: false,
-    });
-
-    const chunks: Buffer[] = [];
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      chunks.push(chunk);
-      if (Buffer.concat(chunks).length > MAX_SINGLE_FILE_BYTES) {
-        proc.kill('SIGTERM');
-        reject(new Error('File too large (exceeds 2GB limit)'));
-      }
-    });
-
-    let stderr = '';
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf8');
-    });
-
-    const timer = setTimeout(() => {
-      proc.kill('SIGTERM');
-      reject(new Error('7-Zip execution timed out'));
-    }, 30_000);
-
-    proc.on('close', (code) => {
-      clearTimeout(timer);
-      const rawStderr = (stderr || '').trim();
-      const rawMsg = rawStderr.toLowerCase();
-      const isPasswordError =
-        rawMsg.includes('wrong password') ||
-        rawMsg.includes('enter password') ||
-        rawMsg.includes('password:') ||
-        (rawMsg.includes('encrypted') && (rawMsg.includes('password') || rawMsg.includes('enter')));
-
-      if (isPasswordError) {
-        reject(new Error('Encrypted archive. Password-protected archives are not supported.'));
-        return;
-      }
-
-      if (code === 0 || code === 1 || code === 2) {
-        const buf = Buffer.concat(chunks);
-        resolve(buf);
-      } else {
-        console.error('[7z Error Output]:', rawStderr || '(stderr empty)');
-        reject(new Error(rawStderr || `7-Zip exited with code ${code}`));
-      }
-    });
-
-    proc.on('error', (err) => {
-      clearTimeout(timer);
-      console.error('[7z Error Output] spawn error:', err);
-      reject(err);
-    });
-  });
+  try {
+    const result = await run7zBase(args, { binary: true, timeout: 30_000 });
+    const buf = result.stdout as Buffer;
+    
+    if (buf.length > 0) {
+      const magic = buf.slice(0, 12).toString('hex');
+      logger.debug(`[7z Extract Success] ${innerPath} (${buf.length} bytes, magic: ${magic})`);
+    } else {
+      logger.warn(`[7z Extract Success] ${innerPath} produced 0 bytes.`);
+    }
+    return buf;
+  } catch (err) {
+    logger.error(`[7z Extract Failed] ${innerPath}:`, err);
+    throw err;
+  }
 }
 
 /**

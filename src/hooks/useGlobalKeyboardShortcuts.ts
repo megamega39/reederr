@@ -55,7 +55,6 @@ export function useGlobalKeyboardShortcuts(
         case 'goUp': viewer.goUp(); break;
         case 'goBack': viewer.goBack(); break;
         case 'goForward': viewer.goForward(); break;
-        case 'toggleCatalog': layout.setCatalogMode(!layout.catalogMode); break;
         case 'viewModeSingle': layout.setViewMode('single'); break;
         case 'viewModeSpread': layout.setViewMode('spread'); break;
         case 'viewModeAuto': layout.setViewMode('auto'); break;

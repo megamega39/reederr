@@ -14,6 +14,7 @@
   --accent-color: #0078d4;
   --accent-bg-selection: #0078d4;
   --accent-bg-selection-light: #cce5ff;
+  --leeyes-blue: #e8f4ff;
   --accent-bg-active: #99c9ff;
   --accent-text-selection: #ffffff;
   
@@ -467,6 +468,7 @@ body,
   display: flex;
   flex-direction: column;
   min-height: 0;
+  background: var(--leeyes-blue);
 }
 
 .file-list-header {

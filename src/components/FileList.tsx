@@ -13,10 +13,13 @@ import { formatSize, formatMtime, getFileType, getParentPath } from '../utils/fi
 import { ColumnResizer } from './ColumnResizer';
 import { useFileSorting } from '../hooks/useFileSorting';
 import { FileSystemAPI } from '../services/api';
+import { useTranslation } from '../i18n';
 
 import { useShallow } from 'zustand/react/shallow';
+import { FileGridView } from './FileGridView';
 
 export function FileList() {
+  const { t } = useTranslation();
   const { entries, error, selectedPath, selectedPaths, isLoading, fileListFilter } = useViewerStore(
     useShallow((s) => ({
       entries: s.entries ?? [],
@@ -50,7 +53,7 @@ export function FileList() {
     }))
   );
 
-  const { setFileListSort, setColName, setColSize, setColType, setColMtime, setColumnOrder } = useLayoutStore(
+  const { setFileListSort, setColName, setColSize, setColType, setColMtime, setColumnOrder, viewMode, setHoveredItem } = useLayoutStore(
     useShallow((s) => ({
       setFileListSort: s.setFileListSort,
       setColName: s.setFileListColName,
@@ -58,6 +61,9 @@ export function FileList() {
       setColType: s.setFileListColType,
       setColMtime: s.setFileListColMtime,
       setColumnOrder: s.setFileListColumnOrder,
+      viewMode: s.fileListViewMode,
+      setFileListViewMode: s.setFileListViewMode,
+      setHoveredItem: s.setHoveredItem,
     }))
   );
 
@@ -265,10 +271,10 @@ export function FileList() {
   );
 
   const COL_CONFIG: Record<FileListColumnId, { label: string; sortBy: FileListSortBy; className: string }> = {
-    name: { label: '名前', sortBy: 'name', className: 'file-list-col-name' },
-    size: { label: 'サイズ', sortBy: 'size', className: 'file-list-col-size' },
-    type: { label: '種類', sortBy: 'type', className: 'file-list-col-type' },
-    mtime: { label: '更新日時', sortBy: 'mtime', className: 'file-list-col-mtime' },
+    name: { label: t('fileList.name'), sortBy: 'name', className: 'file-list-col-name' },
+    size: { label: t('fileList.size'), sortBy: 'size', className: 'file-list-col-size' },
+    type: { label: t('fileList.type'), sortBy: 'type', className: 'file-list-col-type' },
+    mtime: { label: t('fileList.date'), sortBy: 'mtime', className: 'file-list-col-mtime' },
   };
 
   useEffect(() => {
@@ -290,7 +296,7 @@ export function FileList() {
   }, [currentPath, loadDirectory]);
 
   return (
-    <div className="file-list" onKeyDown={handleKeyDown} tabIndex={0}>
+    <div className={styles.fileList} onKeyDown={handleKeyDown} tabIndex={0}>
       <div className="file-list-filter-bar">
         <label className="file-list-filter-label">Filter:</label>
         <input
@@ -298,144 +304,179 @@ export function FileList() {
           className="file-list-filter-input"
           value={fileListFilter}
           onChange={(e) => setFileListFilter(e.target.value)}
-          placeholder=""
+          placeholder={t('fileList.filter')}
           spellCheck={false}
         />
         {fileListFilter && (
           <button className="file-list-filter-clear" onClick={() => setFileListFilter('')}>×</button>
         )}
       </div>
-      <div className="file-list-header">
-        <div className="file-list-header-row">
-          <span className="file-list-col-icon" style={{ width: 24 }} />
-          {columnOrder.map((colId) => {
-            const cfg = COL_CONFIG[colId];
-            const w = colWidthMap[colId];
-            const setW = setColWidthMap[colId];
-            return (
-              <Fragment key={colId}>
-                <div
-                  className={`${styles.colHeader} ${cfg.className ? styles[cfg.className] : ''} ${sortBy === cfg.sortBy ? styles.sorted : ''} ${draggedCol === colId ? styles.dragging : ''}`}
-                  style={{ width: w, minWidth: w, position: 'relative' }}
-                >
-                  <span
-                    className={styles.colHeaderContent}
-                    draggable
-                    onDragStart={(e) => handleColDragStart(e, colId)}
-                    onDragEnd={handleColDragEnd}
-                    onDragOver={handleColDragOver}
-                    onDrop={(e) => handleColDrop(e, colId)}
-                    onClick={() => setFileListSort(cfg.sortBy)}
-                    role="button"
-                    tabIndex={0}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', height: '100%' }}
-                  >
-                    {cfg.label}
-                    {sortBy === cfg.sortBy && (sortOrder === 'asc' ? ' ▲' : ' ▼')}
-                  </span>
-                  <ColumnResizer onResize={(d) => setW(w + d)} onResizeEnd={saveLayoutToStorage} />
-                </div>
-              </Fragment>
-            );
-          })}
-        </div>
-      </div>
-      <div className={styles.content} ref={parentRef}>
-        {isLoading && <div className={styles.loadingOverlay}>読み込み中...</div>}
-        {error && <div className={styles.errorOverlay} role="alert">{error}</div>}
 
-        <div
-          className={styles.itemsVirtualInner}
-          style={{
-            height: `${virtualizer.getTotalSize()}px`,
-            width: '100%',
-            position: 'relative',
-          }}
-        >
-          {virtualizer.getVirtualItems().map((virtualItem) => {
-            const e = sortedEntries[virtualItem.index];
-            if (!e) return null;
-            return (
-              <div
-                key={virtualItem.key}
-                data-path={e.path}
-                className={`${styles.item} ${selectedPaths.some(p => normalizePath(p) === normalizePath(e.path)) ? styles.selected : ''} ${e.isArchive ? styles.itemArchive : ''}`}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: `${virtualItem.size}px`,
-                  transform: `translateY(${virtualItem.start}px)`,
-                }}
-                onClick={(ev) => handleSelect(e, ev)}
-                onDoubleClick={() => handleDoubleClick(e)}
-                onContextMenu={(ev) => handleContextMenu(ev, e)}
-              >
-                <span className={styles.itemColIcon}>
-                  <FileIcon path={e.path} isDirectory={e.isDirectory} size={16} />
-                </span>
-                {columnOrder.map((colId) => {
-                  const w = colWidthMap[colId];
-                  return (
-                    <span
-                      key={colId}
-                      className={styles.itemCol}
-                      style={{ width: w, minWidth: w }}
+      {viewMode === 'list' && (
+        <>
+          <div className={styles.fileListHeader}>
+            <div className="file-list-header-row">
+              <span className="file-list-col-icon" style={{ width: 24 }} />
+              {columnOrder.map((colId) => {
+                const cfg = COL_CONFIG[colId];
+                const w = colWidthMap[colId];
+                const setW = setColWidthMap[colId];
+                return (
+                  <Fragment key={colId}>
+                    <div
+                      className={`${styles.colHeader} ${cfg.className ? styles[cfg.className] : ''} ${sortBy === cfg.sortBy ? styles.sorted : ''} ${draggedCol === colId ? styles.dragging : ''}`}
+                      style={{ width: w, minWidth: w, position: 'relative' }}
                     >
-                      {colId === 'name' ? (
-                        editingPath === e.path ? (
-                          <input
-                            type="text"
-                            className={styles.renameInput}
-                            defaultValue={e.name ?? '-'}
-                            autoFocus
-                            onClick={(ev) => ev.stopPropagation()}
-                            onDoubleClick={(ev) => ev.stopPropagation()}
-                            onFocus={(ev) => {
-                              const input = ev.target;
-                              const val = input.value;
-                              if (!e.isDirectory) {
-                                const lastDot = val.lastIndexOf('.');
-                                if (lastDot > 0) {
-                                  input.setSelectionRange(0, lastDot);
-                                  return;
-                                }
-                              }
-                              input.select();
-                            }}
-                            onKeyDown={(ev) => {
-                              if (ev.key === 'Enter') {
-                                ev.preventDefault();
-                                handleRenameSave(e.path, ev.currentTarget.value.trim(), e.isDirectory);
-                              } else if (ev.key === 'Escape') {
-                                ev.preventDefault();
-                                setEditingPath(null);
-                              }
-                            }}
-                            onBlur={(ev) => handleRenameSave(e.path, ev.target.value.trim(), e.isDirectory)}
-                          />
-                        ) : (
-                          e?.name ?? '-'
-                        )
-                      ) : colId === 'size' ? (
-                        e?.isDirectory ? '' : formatSize(e?.size)
-                      ) : colId === 'type' ? (
-                        getFileType(e)
-                      ) : colId === 'mtime' ? (
-                        formatMtime(e?.mtime)
-                      ) : null}
-                    </span>
-                  );
-                })}
+                      <span
+                        className={styles.colHeaderContent}
+                        draggable
+                        onDragStart={(e) => handleColDragStart(e, colId)}
+                        onDragEnd={handleColDragEnd}
+                        onDragOver={handleColDragOver}
+                        onDrop={(e) => handleColDrop(e, colId)}
+                        onClick={() => setFileListSort(cfg.sortBy)}
+                        role="button"
+                        tabIndex={0}
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', height: '100%' }}
+                      >
+                        {cfg.label}
+                        {sortBy === cfg.sortBy && (sortOrder === 'asc' ? ' ▲' : ' ▼')}
+                      </span>
+                      <ColumnResizer onResize={(d) => setW(w + d)} onResizeEnd={saveLayoutToStorage} />
+                    </div>
+                  </Fragment>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={styles.content} ref={parentRef}>
+            {isLoading && <div className={styles.loadingOverlay}>{t('common.loading')}</div>}
+            {error && (
+              <div className={styles.errorOverlay} role="alert">
+                <div className={styles.errorContent}>
+                  <div className={styles.errorText}>{error}</div>
+                  <button 
+                    className={styles.errorBackButton} 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      useViewerStore.getState().goBack();
+                    }}
+                  >
+                    {t('common.back')}
+                  </button>
+                </div>
               </div>
-            );
-          })}
-        </div>
-        {!isLoading && !error && sortedEntries.length === 0 && (
-          <div className={styles.empty}>フォルダや画像・動画・音楽がありません</div>
-        )}
-      </div>
+            )}
+
+            <div
+              className={styles.itemsVirtualInner}
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+                width: '100%',
+                position: 'relative',
+              }}
+            >
+              {virtualizer.getVirtualItems().map((virtualItem) => {
+                const e = sortedEntries[virtualItem.index];
+                if (!e) return null;
+                return (
+                  <div
+                    key={virtualItem.key}
+                    data-path={e.path}
+                    className={`${styles.item} ${selectedPaths.some(p => normalizePath(p) === normalizePath(e.path)) ? styles.selected : ''} ${e.isArchive ? styles.itemArchive : ''}`}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: `${virtualItem.size}px`,
+                      transform: `translateY(${virtualItem.start}px)`,
+                    }}
+                    onClick={(ev) => handleSelect(e, ev)}
+                    onDoubleClick={() => handleDoubleClick(e)}
+                    onContextMenu={(ev) => handleContextMenu(ev, e)}
+                    onMouseEnter={(ev) => setHoveredItem(e.path, { x: ev.clientX, y: ev.clientY })}
+                    onMouseLeave={() => setHoveredItem(null)}
+                  >
+                    <span className={styles.itemColIcon}>
+                      <FileIcon path={e.path} isDirectory={e.isDirectory} size={16} />
+                    </span>
+                    {columnOrder.map((colId) => {
+                      const w = colWidthMap[colId];
+                      return (
+                        <span
+                          key={colId}
+                          className={styles.itemCol}
+                          style={{ width: w, minWidth: w }}
+                        >
+                          {colId === 'name' ? (
+                            editingPath === e.path ? (
+                              <input
+                                type="text"
+                                className={styles.renameInput}
+                                defaultValue={e.name ?? '-'}
+                                autoFocus
+                                onClick={(ev) => ev.stopPropagation()}
+                                onDoubleClick={(ev) => ev.stopPropagation()}
+                                onFocus={(ev) => {
+                                  const input = ev.target;
+                                  const val = input.value;
+                                  if (!e.isDirectory) {
+                                    const lastDot = val.lastIndexOf('.');
+                                    if (lastDot > 0) {
+                                      input.setSelectionRange(0, lastDot);
+                                      return;
+                                    }
+                                  }
+                                  input.select();
+                                }}
+                                onKeyDown={(ev) => {
+                                  if (ev.key === 'Enter') {
+                                    ev.preventDefault();
+                                    handleRenameSave(e.path, ev.currentTarget.value.trim(), e.isDirectory);
+                                  } else if (ev.key === 'Escape') {
+                                    ev.preventDefault();
+                                    setEditingPath(null);
+                                  }
+                                }}
+                                onBlur={(ev) => handleRenameSave(e.path, ev.target.value.trim(), e.isDirectory)}
+                              />
+                            ) : (
+                              e?.name ?? '-'
+                            )
+                          ) : colId === 'size' ? (
+                            e?.isDirectory ? '' : formatSize(e?.size)
+                          ) : colId === 'type' ? (
+                            getFileType(e, t)
+                          ) : colId === 'mtime' ? (
+                            formatMtime(e?.mtime)
+                          ) : null}
+                        </span>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+            {!isLoading && !error && sortedEntries.length === 0 && (
+              <div className={styles.empty}>{t('fileList.empty')}</div>
+            )}
+          </div>
+        </>
+      )}
+
+      {viewMode === 'grid' && (
+        <FileGridView 
+          entries={sortedEntries}
+          selectedPath={selectedPath}
+          selectedPaths={selectedPaths}
+          onSelect={handleSelect}
+          onDoubleClick={handleDoubleClick}
+          onContextMenu={handleContextMenu}
+        />
+      )}
+
       {contextMenu &&
         (contextMenu.entry.isDirectory ? (
           <FolderContextMenu
@@ -447,8 +488,7 @@ export function FileList() {
             onExpand={() => handleFolderExpandFromMenu(contextMenu.entry.path)}
             onRequestRename={() => {
               const itemPath = contextMenu.entry.path;
-              const isActuallyVirtual = isVirtual || itemPath.includes('!') || contextMenu.entry.name.startsWith('7z');
-              if (isActuallyVirtual) return;
+              if (isVirtual || itemPath.includes('!') || contextMenu.entry.name.startsWith('7z')) return;
               setSelectedPath(itemPath);
               startRename(itemPath);
               closeContextMenu();
@@ -464,8 +504,7 @@ export function FileList() {
             isVirtual={isVirtual}
             onRequestRename={() => {
               const itemPath = contextMenu.entry.path;
-              const isActuallyVirtual = isVirtual || itemPath.includes('!') || contextMenu.entry.name.startsWith('7z');
-              if (isActuallyVirtual) return;
+              if (isVirtual || itemPath.includes('!') || contextMenu.entry.name.startsWith('7z')) return;
               setSelectedPath(itemPath);
               startRename(itemPath);
               closeContextMenu();

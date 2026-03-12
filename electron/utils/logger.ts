@@ -2,7 +2,7 @@ import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
-type LogLevel = 'info' | 'warn' | 'error';
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 class Logger {
   private logPath: string;
@@ -31,6 +31,10 @@ class Logger {
     } catch (err) {
       console.error('Failed to write to log file:', err);
     }
+  }
+
+  debug(message: string, ...args: any[]) {
+    this.write('debug', message, ...args);
   }
 
   info(message: string, ...args: any[]) {

@@ -4,6 +4,7 @@ import { isRarListingPath, rarList, rarReadFile, rarStat } from './rarFS';
 import type { DirectoryEntry, FileStats } from './types';
 import { splitArchivePath } from './utils';
 import { Readable } from 'node:stream';
+import { logger } from '../utils/logger';
 import { createReadStream } from 'node:fs';
 
 const ARCHIVE_EXT = ['.zip', '.cbz', '.rar', '.cbr', '.7z', '.7zip', '.tar', '.gz', '.bz2', '.xz', '.iso', '.lzh', '.lha', '.lzma'];
@@ -32,23 +33,15 @@ export async function listDirectory(
   if (split) {
     if (isRarListingPath(path)) {
       const entries = await rarList(path, options);
-      console.log('[Reederr VFS] archiveFS.list(RAR)', {
-        containerPath: split[0],
-        innerDir: split[1],
-        entriesCount: entries.length,
-      });
+      logger.info(`[Reederr VFS] archiveFS.list(RAR): ${split[0]} (${entries.length} entries)`);
       return entries;
     }
     const entries = await listArchiveDirectory(path, options);
-    console.log('[Reederr VFS] archiveFS.list(ZIP)', {
-      containerPath: split[0],
-      innerDir: split[1],
-      entriesCount: entries.length,
-    });
+    logger.info(`[Reederr VFS] archiveFS.list(ZIP): ${split[0]} (${entries.length} entries)`);
     return entries;
   }
   if (isArchiveFilepath(path)) {
-    console.error('[Reederr VFS] BUG: LocalFS.list called with archive path (archive not opened correctly):', path);
+    logger.error('[Reederr VFS] LocalFS.list called with archive path:', path);
     throw new Error(`アーカイブは開けていません。パスを zip! 形式で指定してください: ${path}`);
   }
   return localFS.listDirectory(path);

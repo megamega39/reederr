@@ -20,21 +20,17 @@ export function PersistenceManager() {
     if (initPromise.current) return;
 
     const runInit = async () => {
-      console.log('[Persistence] >>> Synchronized initialization START');
-
       useViewerStore.getState().setRestoring(true);
       useLayoutStore.getState().setRestoring(true);
       useMediaPlayerStore.getState().setRestoring(true);
 
       try {
-        console.log('[Persistence] Loading stores from disk...');
         await Promise.all([
           loadLayoutFromStorage(),
           loadViewerFromStorage(),
           useMediaPlayerStore.getState().loadFromStorage(),
         ]);
 
-        console.log('[Persistence] Initializing tree...');
         await initTree();
 
         const state = useViewerStore.getState();
@@ -57,13 +53,11 @@ export function PersistenceManager() {
           }
         }
       } catch (e) {
-        console.error('[Persistence] CRITICAL: Initialization aborted due to error:', e);
       } finally {
         await new Promise(resolve => setTimeout(resolve, 1000));
         useViewerStore.getState().setRestoring(false);
         useLayoutStore.getState().setRestoring(false);
         useMediaPlayerStore.getState().setRestoring(false);
-        console.log('[Persistence] <<< Initialization complete. Locks RELEASED.');
       }
     };
 

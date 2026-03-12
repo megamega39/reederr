@@ -2,8 +2,10 @@ import { Repeat } from 'lucide-react';
 import { useViewerStore } from '../stores/viewerStore';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
 import styles from './ViewerToolbar.module.css';
+import { useTranslation } from '../i18n';
 
 export function ToolbarPlayback() {
+    const { t } = useTranslation();
     const { mediaType } = useViewerStore();
     const {
         loopEnabled,
@@ -23,7 +25,7 @@ export function ToolbarPlayback() {
             <div className={styles.sep} />
             <button
                 onClick={toggleLoop}
-                title="ループ再生"
+                title={t('toolbar.loop')}
                 className={`${styles.btn} ${loopEnabled ? styles.btnActive : ''}`}
             >
                 <Repeat size={18} />
@@ -44,7 +46,7 @@ export function ToolbarPlayback() {
                         if (v !== 'custom') setPlaybackRate(parseFloat(v));
                     }}
                     className={styles.select}
-                    title="再生速度"
+                    title={t('toolbar.speed')}
                 >
                     {SPEED_OPTIONS.map((s) => (
                         <option key={s} value={String(s)}>

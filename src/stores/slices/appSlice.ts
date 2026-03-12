@@ -1,4 +1,5 @@
 import { StateCreator } from 'zustand';
+import { MenuAPI } from '../../services/api';
 import { ViewerState } from '../viewerStore.types';
 
 export interface AppSlice {
@@ -8,6 +9,8 @@ export interface AppSlice {
   setRestoring: ViewerState['setRestoring'];
   fileListFilter: ViewerState['fileListFilter'];
   setFileListFilter: ViewerState['setFileListFilter'];
+  language: ViewerState['language'];
+  setLanguage: ViewerState['setLanguage'];
 }
 
 export const createAppSlice: StateCreator<
@@ -19,7 +22,12 @@ export const createAppSlice: StateCreator<
   isHydrated: false,
   isRestoring: false,
   fileListFilter: '',
+  language: 'ja',
   setHydrated: (v) => set({ isHydrated: v }),
   setRestoring: (v) => set({ isRestoring: v }),
   setFileListFilter: (v) => set({ fileListFilter: v }),
+  setLanguage: (l) => {
+    set({ language: l });
+    MenuAPI.rebuildMenu(l);
+  },
 });

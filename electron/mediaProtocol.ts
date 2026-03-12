@@ -4,6 +4,7 @@ import { Readable } from 'node:stream';
 import { extname } from 'node:path';
 import { safeDecodeURIComponent, parseRangeHeader } from './utils/uriUtils';
 import { MIME_MAP } from './vfs/constants';
+import { splitArchivePath } from './vfs/utils';
 
 function toWebStream(stream: NodeJS.ReadableStream): ReadableStream<Uint8Array> {
   return Readable.toWeb(stream as Readable) as ReadableStream<Uint8Array>;
@@ -50,7 +51,7 @@ export function registerMediaProtocol(mediaPathMap: Map<string, string>): void {
     const range = parseRangeHeader(rangeHeader, fileSize);
     
     // Check if the path is virtual (inside an archive and not extracted)
-    const isVirtual = !!require('./vfs/utils').splitArchivePath(realPath);
+    const isVirtual = !!splitArchivePath(realPath);
 
     if (!range || isVirtual) {
       const stream = streamFile(realPath);

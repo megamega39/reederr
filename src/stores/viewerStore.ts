@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { PersistenceAPI } from '../services/api';
+import { PersistenceAPI, FileSystemAPI } from '../services/api';
 import { ViewerState } from './viewerStore.types';
 import { VIEWER_KEY } from './viewerStore.utils';
 import { createTreeSlice } from './slices/treeSlice';
@@ -23,9 +23,14 @@ export const useViewerStore = create<ViewerState>()((...a) => ({
 export async function loadViewerFromStorage(): Promise<void> {
   try {
     const raw = await PersistenceAPI.loadStore();
-    const data = raw[VIEWER_KEY] as any;
+    const data = raw[VIEWER_KEY] as {
+      currentPath?: string;
+      selectedPath?: string;
+      history?: any[];
+      historyIndex?: number;
+      favorites?: any[];
+    };
     if (data) {
-      console.log('[Persistence] Loaded viewer state:', Object.keys(data));
       useViewerStore.setState(() => ({
         ...(data.currentPath && { currentPath: data.currentPath }),
         ...(data.selectedPath && { selectedPath: data.selectedPath }),
@@ -38,7 +43,6 @@ export async function loadViewerFromStorage(): Promise<void> {
       useViewerStore.getState().setHydrated(true);
     }
   } catch (err) {
-    console.error('[Persistence] Failed to load viewer state:', err);
     useViewerStore.getState().setHydrated(true);
   }
 }
@@ -57,7 +61,6 @@ export function saveViewerToStorage(): void {
     historyIndex,
     favorites,
   };
-  console.log('[Persistence] Saving viewer state:', Object.keys(data));
   PersistenceAPI.saveStore({
     [VIEWER_KEY]: data,
   });
@@ -76,5 +79,24 @@ useViewerStore.subscribe((state, prevState) => {
     // We don't await here to avoid blocking other state updates, 
     // but revealPath internal hydration logic handles sequence.
     state.revealPath(state.currentPath);
+  }
+});
+
+// Side-effect: Directory Watching
+useViewerStore.subscribe((state, prevState) => {
+  if (state.currentPath && state.currentPath !== prevState.currentPath && state.isHydrated) {
+    // Only watch real physical directories
+    if (!state.currentPath.includes('!') && state.currentPath !== 'pc' && state.currentPath !== 'network') {
+      FileSystemAPI.watchDirectory(state.currentPath);
+    }
+  }
+});
+
+// Initial global listener for file system changes
+FileSystemAPI.onFileSystemChanged(({ path }) => {
+  const state = useViewerStore.getState();
+  if (state.currentPath === path && !state.isLoading) {
+    console.log('[Watcher] Current directory changed, refreshing...', path);
+    state.loadDirectory(path, { pushHistory: false });
   }
 });

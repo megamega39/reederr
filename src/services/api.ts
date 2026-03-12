@@ -12,11 +12,15 @@ export const FileSystemAPI = {
   getFileIcon: (absPath: string, size?: 16 | 20) => window.reederr.getFileIcon(absPath, size),
   readFile: (path: string) => window.reederr.readFile(path),
   stat: (path: string) => window.reederr.stat(path),
+  getNetworkResources: () => window.reederr.getNetworkResources(),
   createFolder: (parentPath: string, name: string) => window.reederr.createFolder(parentPath, name),
   renameFolder: (path: string, newName: string) => window.reederr.renameFolder(path, newName),
   deleteFolder: (path: string) => window.reederr.deleteFolder(path),
   renameFile: (path: string, newName: string) => window.reederr.renameFile(path, newName),
   deleteFile: (path: string) => window.reederr.deleteFile(path),
+  watchDirectory: (path: string) => window.reederr.watchDirectory(path),
+  onFileSystemChanged: (cb: (payload: { path: string }) => void) => window.reederr.onFileSystemChanged(cb),
+  getThumbnail: (path: string, width: number, height: number) => window.reederr.getThumbnail(path, width, height),
 };
 
 export const SystemAPI = {
@@ -56,6 +60,7 @@ export const MenuAPI = {
   onMenuCopyPath: (cb: () => void) => window.reederr.onMenuCopyPath(cb),
   onMenuZoom: (cb: (action: string) => void) => window.reederr.onMenuZoom(cb),
   onMenuHelp: (cb: () => void) => window.reederr.onMenuHelp(cb),
+  rebuildMenu: (lang: string) => window.reederr.rebuildMenu(lang),
 };
 
 export const NotificationAPI = {

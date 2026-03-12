@@ -4,6 +4,7 @@ interface ReederrAPI {
   getFileIcon: (absPath: string, size?: 16 | 20) => Promise<string>;
   getSpecialFolders: () => Promise<Array<{ name: string; path: string }>>;
   getDrives: () => Promise<Array<{ name: string; path: string }>>;
+  getNetworkResources: () => Promise<Array<{ name: string; path: string }>>;
   selectFolder: () => Promise<{ path: string } | null>;
   listDirectory: (path: string, options?: { recursive?: boolean }) => Promise<
     Array<{
@@ -51,6 +52,9 @@ interface ReederrAPI {
   openWithApp: (path: string, appPath: string) => Promise<{ ok: boolean; error?: string }>;
   selectFile: () => Promise<{ path: string } | null>;
   onShowToast: (cb: (message: string, type: 'info' | 'success' | 'warn' | 'error', duration?: number) => void) => () => void;
+  rebuildMenu: (lang: string) => Promise<void>;
+  watchDirectory: (path: string) => Promise<void>;
+  onFileSystemChanged: (cb: (payload: { path: string }) => void) => () => void;
 }
 
 interface Window {

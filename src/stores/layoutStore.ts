@@ -7,6 +7,7 @@ export type FileListColumnId = 'name' | 'size' | 'type' | 'mtime';
 export type ViewMode = 'single' | 'spread' | 'auto';
 export type Binding = 'rtl' | 'ltr';
 export type ScaleMode = 'fit-window' | 'fit-width' | 'fit-height' | 'original';
+export type FileListViewMode = 'list' | 'grid';
 
 interface LayoutState {
   leftPaneWidth: number;
@@ -16,7 +17,6 @@ interface LayoutState {
   binding: Binding;
   autoThreshold: number;
   scaleMode: ScaleMode;
-  catalogMode: boolean;
   autoSpreadCover: boolean;
   /** サブフォルダも含めて画像を再帰表示 */
   recursiveMedia: boolean;
@@ -27,6 +27,7 @@ interface LayoutState {
   fileListColType: number;
   fileListColMtime: number;
   fileListColumnOrder: FileListColumnId[];
+  fileListViewMode: FileListViewMode;
 
   setLeftPaneWidth: (px: number) => void;
   togglePreviewFullscreen: () => void;
@@ -36,7 +37,6 @@ interface LayoutState {
   setBinding: (b: Binding) => void;
   setAutoThreshold: (t: number) => void;
   setScaleMode: (m: ScaleMode) => void;
-  setCatalogMode: (v: boolean) => void;
   setAutoSpreadCover: (v: boolean) => void;
   setRecursiveMedia: (v: boolean) => void;
   setFileListSort: (by: FileListSortBy, order?: FileListSortOrder) => void;
@@ -45,10 +45,18 @@ interface LayoutState {
   setFileListColType: (px: number) => void;
   setFileListColMtime: (px: number) => void;
   setFileListColumnOrder: (order: FileListColumnId[]) => void;
+  setFileListViewMode: (mode: FileListViewMode) => void;
   isHydrated: boolean;
   setHydrated: (v: boolean) => void;
   isRestoring: boolean;
   setRestoring: (v: boolean) => void;
+
+  // Hover Preview
+  showHoverPreview: boolean;
+  toggleHoverPreview: () => void;
+  hoveredPath: string | null;
+  hoveredPosition: { x: number; y: number } | null;
+  setHoveredItem: (path: string | null, pos?: { x: number; y: number } | null) => void;
 }
 
 const MIN_LEFT = 40;
@@ -74,7 +82,6 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   binding: 'rtl',
   autoThreshold: DEFAULT_AUTO_THRESHOLD,
   scaleMode: 'fit-window',
-  catalogMode: false,
   autoSpreadCover: true,
   recursiveMedia: false,
   fileListSortBy: 'name',
@@ -84,6 +91,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   fileListColType: DEFAULT_TYPE,
   fileListColMtime: DEFAULT_MTIME,
   fileListColumnOrder: ['name', 'size', 'type', 'mtime'],
+  fileListViewMode: 'list',
 
   setLeftPaneWidth: (px) =>
     set({ leftPaneWidth: Math.max(MIN_LEFT, px) }),
@@ -102,7 +110,6 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   setAutoThreshold: (t) =>
     set({ autoThreshold: Math.max(1.1, Math.min(1.8, t)) }),
   setScaleMode: (m) => set({ scaleMode: m }),
-  setCatalogMode: (v) => set({ catalogMode: v }),
   setAutoSpreadCover: (v) => set({ autoSpreadCover: v }),
   setRecursiveMedia: (v) => set({ recursiveMedia: v }),
 
@@ -125,18 +132,26 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   setFileListColumnOrder: (order) =>
     set({ fileListColumnOrder: order }),
 
+  setFileListViewMode: (mode) => set({ fileListViewMode: mode }),
+
   isHydrated: false,
   setHydrated: (v) => set({ isHydrated: v }),
   isRestoring: false,
   setRestoring: (v) => set({ isRestoring: v }),
+
+  hoveredPath: null,
+  hoveredPosition: null,
+  setHoveredItem: (path, pos) => set({ hoveredPath: path, hoveredPosition: pos ?? null }),
+
+  showHoverPreview: true,
+  toggleHoverPreview: () => set((s) => ({ showHoverPreview: !s.showHoverPreview })),
 }));
 
 export const loadLayoutFromStorage = async () => {
   try {
     const raw = await PersistenceAPI.loadStore();
-    const data = raw[LAYOUT_KEY] as any;
+    const data = raw[LAYOUT_KEY] as Partial<LayoutState> | undefined;
     if (data) {
-      console.log('[Persistence] Loaded layout state:', Object.keys(data));
       useLayoutStore.setState((state) => ({
         ...state,
         ...data,
@@ -146,7 +161,6 @@ export const loadLayoutFromStorage = async () => {
       useLayoutStore.getState().setHydrated(true);
     }
   } catch (err) {
-    console.error('[Persistence] Failed to load layout state:', err);
     useLayoutStore.getState().setHydrated(true);
   }
 }
@@ -154,7 +168,6 @@ export const loadLayoutFromStorage = async () => {
 export function saveLayoutToStorage(): void {
   const state = useLayoutStore.getState();
   if (state.isRestoring || !state.isHydrated) {
-    console.log('[Persistence] Layout save skipped (restoring or not hydrated)');
     return;
   }
   const {
@@ -165,6 +178,7 @@ export function saveLayoutToStorage(): void {
     autoThreshold,
     scaleMode,
     catalogMode,
+    autoSpreadCover,
     recursiveMedia,
     fileListSortBy,
     fileListSortOrder,
@@ -173,6 +187,8 @@ export function saveLayoutToStorage(): void {
     fileListColSize,
     fileListColType,
     fileListColMtime,
+    fileListViewMode,
+    showHoverPreview,
   } = state;
 
   const layoutState = {
@@ -183,6 +199,7 @@ export function saveLayoutToStorage(): void {
     autoThreshold,
     scaleMode,
     catalogMode,
+    autoSpreadCover,
     recursiveMedia,
     fileListSortBy,
     fileListSortOrder,
@@ -191,6 +208,8 @@ export function saveLayoutToStorage(): void {
     fileListColSize,
     fileListColType,
     fileListColMtime,
+    fileListViewMode,
+    showHoverPreview,
   };
 
   console.log('[Persistence] Saving layout state:', Object.keys(layoutState));

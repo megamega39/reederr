@@ -76,11 +76,9 @@ export const useMediaPlayerStore = create<MediaPlayerState>((set, get) => ({
 
   loadFromStorage: async () => {
     try {
-      console.log('[Persistence:MediaPlayer] loading state...');
       const raw = await PersistenceAPI.loadStore();
       const state = raw[MEDIA_PLAYER_KEY] as Partial<MediaPlayerSettings> | undefined;
       if (state) {
-        console.log('[Persistence:MediaPlayer] Loaded state:', Object.keys(state));
         set((s) => ({
           loopEnabled: typeof state.loopEnabled === 'boolean' ? state.loopEnabled : s.loopEnabled,
           playbackRate: typeof state.playbackRate === 'number' ? clampRate(state.playbackRate) : s.playbackRate,
@@ -100,7 +98,6 @@ export const useMediaPlayerStore = create<MediaPlayerState>((set, get) => ({
   saveToStorage: () => {
     const state = get();
     if (state.isRestoring || !state.isHydrated) {
-      console.log('[Persistence:MediaPlayer] Media save skipped (restoring or not hydrated)');
       return;
     }
 
@@ -109,7 +106,6 @@ export const useMediaPlayerStore = create<MediaPlayerState>((set, get) => ({
     // For this simple one, we'll just guard it.
     const { loopEnabled, playbackRate, preservesPitch, autoPlay } = state;
     const stateToSave = { loopEnabled, playbackRate, preservesPitch, autoPlay };
-    console.log('[Persistence:MediaPlayer] Saving state...', stateToSave);
     PersistenceAPI.saveStore({
       [MEDIA_PLAYER_KEY]: stateToSave,
     });

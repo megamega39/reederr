@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useShortcutStore, ShortcutAction, ACTION_LABELS } from '../stores/shortcutStore';
+import { useTranslation } from '../i18n';
 
 export function ShortcutSettings() {
+  const { t } = useTranslation();
   const { shortcuts, setShortcut, resetToDefault } = useShortcutStore();
   const [editingAction, setEditingAction] = useState<ShortcutAction | null>(null);
 
@@ -43,14 +45,14 @@ export function ShortcutSettings() {
   return (
     <div className="shortcut-settings">
       <div className="shortcut-settings-header">
-        <h3 className="settings-section-title">ショートカットキー設定</h3>
-        <button className="settings-btn settings-btn--secondary" onClick={resetToDefault}>初期設定に戻す</button>
+        <h3 className="settings-section-title">{t('settings.shortcutsTitle')}</h3>
+        <button className="settings-btn settings-btn--secondary" onClick={resetToDefault}>{t('settings.shortcutsReset')}</button>
       </div>
       
       <div className="shortcut-list">
         {(Object.keys(ACTION_LABELS) as ShortcutAction[]).map((action) => (
           <div key={action} className="shortcut-item">
-            <div className="shortcut-label">{ACTION_LABELS[action]}</div>
+            <div className="shortcut-label">{t(`shortcuts.${action}` as any)}</div>
             <div className="shortcut-keys">
               {shortcuts[action]?.map((key) => (
                 <div key={key} className="shortcut-key-tag">
@@ -62,7 +64,7 @@ export function ShortcutSettings() {
                 className={`shortcut-add-btn ${editingAction === action ? 'editing' : ''}`}
                 onClick={() => setEditingAction(action)}
               >
-                {editingAction === action ? '記号を入力...' : '+ 追加'}
+                {editingAction === action ? t('shortcuts.recording') : t('shortcuts.add')}
               </button>
             </div>
           </div>
@@ -72,9 +74,9 @@ export function ShortcutSettings() {
       {editingAction && (
         <div className="shortcut-recording-overlay">
           <div className="shortcut-recording-modal">
-            <p>キーを押してください...</p>
-            <p className="shortcut-recording-hint">（Escでキャンセル）</p>
-            <button className="settings-btn" onClick={() => setEditingAction(null)}>キャンセル</button>
+            <p>{t('shortcuts.recording')}</p>
+            <p className="shortcut-recording-hint">{t('shortcuts.recordingHint')}</p>
+            <button className="settings-btn" onClick={() => setEditingAction(null)}>{t('common.cancel')}</button>
           </div>
         </div>
       )}

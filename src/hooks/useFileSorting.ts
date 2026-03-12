@@ -3,8 +3,10 @@ import { useViewerStore } from '../stores/viewerStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import type { DirectoryEntry } from '../types';
 import { getFileType } from '../utils/fileUtils';
+import { useTranslation } from '../i18n';
 
 export function useFileSorting(entries: DirectoryEntry[]) {
+  const { t } = useTranslation();
   const sortBy = useLayoutStore((s) => s.fileListSortBy);
   const sortOrder = useLayoutStore((s) => s.fileListSortOrder);
   const fileListFilter = useViewerStore((s) => s.fileListFilter);
@@ -44,7 +46,7 @@ export function useFileSorting(entries: DirectoryEntry[]) {
       } else if (sortBy === 'mtime') {
         cmp = (a?.mtime ?? 0) - (b?.mtime ?? 0);
       } else {
-        cmp = getFileType(a).localeCompare(getFileType(b));
+        cmp = getFileType(a, t).localeCompare(getFileType(b, t));
       }
       return cmp * mul;
     });

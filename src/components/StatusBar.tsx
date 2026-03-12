@@ -3,6 +3,7 @@ import { useViewerStore } from '../stores/viewerStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import { normalizePath } from '../stores/viewerStore.utils';
 import styles from './StatusBar.module.css';
+import { useTranslation } from '../i18n';
 
 function formatSize(bytes?: number) {
   if (bytes == null || bytes < 0) return '';
@@ -13,6 +14,7 @@ function formatSize(bytes?: number) {
 }
 
 export const StatusBar = memo(() => {
+  const { t } = useTranslation();
   const selectedPath = useViewerStore((s) => s.selectedPath);
   const selectedPaths = useViewerStore((s) => s.selectedPaths);
   const entries = useViewerStore((s) => s.entries);
@@ -53,7 +55,7 @@ export const StatusBar = memo(() => {
         ) : (
           <span className={styles.path} title={entry?.path}>
             {selectionStats 
-              ? `${selectionStats.count} 個のオブジェクトを選択 (${formatSize(selectionStats.size)})` 
+              ? t('statusBar.itemsSelected', { count: selectionStats.count, size: formatSize(selectionStats.size) })
               : (entry?.path ?? '-')}
           </span>
         )}
@@ -71,10 +73,10 @@ export const StatusBar = memo(() => {
           </span>
         )}
         <span className={styles.scale}>
-          {scaleMode === 'fit-window' && 'ウィンドウに合わせる'}
-          {scaleMode === 'fit-width' && '幅に合わせる'}
-          {scaleMode === 'fit-height' && '高さに合わせる'}
-          {scaleMode === 'original' && '等倍'}
+          {scaleMode === 'fit-window' && t('statusBar.scaleFitWindow')}
+          {scaleMode === 'fit-width' && t('statusBar.scaleFitWidth')}
+          {scaleMode === 'fit-height' && t('statusBar.scaleFitHeight')}
+          {scaleMode === 'original' && t('statusBar.scaleOriginal')}
         </span>
       </div>
 

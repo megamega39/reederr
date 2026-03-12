@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useLayoutStore, saveLayoutToStorage } from '../stores/layoutStore';
 import { useViewerStore } from '../stores/viewerStore';
+import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
 import type { ViewMode, Binding } from '../stores/layoutStore';
 import { ShortcutSettings } from './ShortcutSettings';
 import { ExternalToolSettings } from './ExternalToolSettings';
-import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
+import { useTranslation } from '../i18n';
+import { useShallow } from 'zustand/react/shallow';
 
 interface Props {
     onClose: () => void;
@@ -13,22 +15,39 @@ interface Props {
 type Tab = 'general' | 'shortcuts' | 'externalTools';
 
 export function SettingsModal({ onClose }: Props) {
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<Tab>('general');
     
-    const viewMode = useLayoutStore((s) => s.viewMode);
-    const setViewMode = useLayoutStore((s) => s.setViewMode);
-    const binding = useLayoutStore((s) => s.binding);
-    const setBinding = useLayoutStore((s) => s.setBinding);
-    const autoThreshold = useLayoutStore((s) => s.autoThreshold);
-    const setAutoThreshold = useLayoutStore((s) => s.setAutoThreshold);
-    const recursiveMedia = useLayoutStore((s) => s.recursiveMedia);
-    const setRecursiveMedia = useLayoutStore((s) => s.setRecursiveMedia);
-    const wrapNavigation = useViewerStore((s) => s.wrapNavigation);
-    const setWrapNavigation = useViewerStore((s) => s.setWrapNavigation);
-    const loadDirectory = useViewerStore((s) => s.loadDirectory);
+    const { viewMode, binding, autoThreshold, recursiveMedia, setViewMode, setBinding, setAutoThreshold, setRecursiveMedia } = useLayoutStore(
+        useShallow((s) => ({
+            viewMode: s.viewMode,
+            binding: s.binding,
+            autoThreshold: s.autoThreshold,
+            recursiveMedia: s.recursiveMedia,
+            setViewMode: s.setViewMode,
+            setBinding: s.setBinding,
+            setAutoThreshold: s.setAutoThreshold,
+            setRecursiveMedia: s.setRecursiveMedia,
+        }))
+    );
     
-    const autoPlay = useMediaPlayerStore((s) => s.autoPlay);
-    const setAutoPlay = useMediaPlayerStore((s) => s.setAutoPlay);
+    const { language, wrapNavigation, currentPath, setLanguage, setWrapNavigation, loadDirectory } = useViewerStore(
+        useShallow((s) => ({
+            language: s.language,
+            wrapNavigation: s.wrapNavigation,
+            currentPath: s.currentPath,
+            setLanguage: s.setLanguage,
+            setWrapNavigation: s.setWrapNavigation,
+            loadDirectory: s.loadDirectory,
+        }))
+    );
+    
+    const { autoPlay, setAutoPlay } = useMediaPlayerStore(
+        useShallow((s) => ({
+            autoPlay: s.autoPlay,
+            setAutoPlay: s.setAutoPlay,
+        }))
+    );
 
     const [localViewMode, setLocalViewMode] = useState<ViewMode>(viewMode);
     const [localBinding, setLocalBinding] = useState<Binding>(binding);
@@ -36,6 +55,7 @@ export function SettingsModal({ onClose }: Props) {
     const [localRecursive, setLocalRecursive] = useState(recursiveMedia);
     const [localWrap, setLocalWrap] = useState(wrapNavigation);
     const [localAutoPlay, setLocalAutoPlay] = useState(autoPlay);
+    const [localLanguage, setLocalLanguage] = useState<'ja' | 'en'>(language);
 
     const handleApply = () => {
         setViewMode(localViewMode);
@@ -44,6 +64,7 @@ export function SettingsModal({ onClose }: Props) {
         setRecursiveMedia(localRecursive);
         setWrapNavigation(localWrap);
         setAutoPlay(localAutoPlay);
+        setLanguage(localLanguage);
         saveLayoutToStorage();
         if (localRecursive !== recursiveMedia && currentPath) {
             loadDirectory(currentPath, { pushHistory: false });
@@ -55,8 +76,8 @@ export function SettingsModal({ onClose }: Props) {
         <div className="settings-overlay" onClick={onClose}>
             <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="settings-header">
-                    <span className="settings-title">設定</span>
-                    <button className="settings-close-btn" onClick={onClose} title="閉じる">✕</button>
+                    <span className="settings-title">{t('settings.title')}</span>
+                    <button className="settings-close-btn" onClick={onClose} title={t('common.close')}>✕</button>
                 </div>
                 
                 <div className="settings-tabs">
@@ -64,28 +85,55 @@ export function SettingsModal({ onClose }: Props) {
                         className={`settings-tab-btn ${activeTab === 'general' ? 'active' : ''}`}
                         onClick={() => setActiveTab('general')}
                     >
-                        全般
+                        {t('settings.general')}
                     </button>
                     <button 
                         className={`settings-tab-btn ${activeTab === 'shortcuts' ? 'active' : ''}`}
                         onClick={() => setActiveTab('shortcuts')}
                     >
-                        ショートカット
+                        {t('settings.shortcuts')}
                     </button>
                     <button 
                         className={`settings-tab-btn ${activeTab === 'externalTools' ? 'active' : ''}`}
                         onClick={() => setActiveTab('externalTools')}
                     >
-                        外部ツール
+                        {t('settings.externalTools')}
                     </button>
                 </div>
 
                 <div className="settings-body">
                     {activeTab === 'general' ? (
                         <>
+                            {/* 表示言語 */}
+                            <section className="settings-section">
+                                <h3 className="settings-section-title">{t('settings.language')}</h3>
+                                <div className="settings-row">
+                                    <label className={`settings-radio-label ${localLanguage === 'ja' ? 'active' : ''}`}>
+                                        <input
+                                            type="radio"
+                                            name="language"
+                                            value="ja"
+                                            checked={localLanguage === 'ja'}
+                                            onChange={() => setLocalLanguage('ja')}
+                                        />
+                                        日本語 (Japanese)
+                                    </label>
+                                    <label className={`settings-radio-label ${localLanguage === 'en' ? 'active' : ''}`}>
+                                        <input
+                                            type="radio"
+                                            name="language"
+                                            value="en"
+                                            checked={localLanguage === 'en'}
+                                            onChange={() => setLocalLanguage('en')}
+                                        />
+                                        English
+                                    </label>
+                                </div>
+                            </section>
+
                             {/* 表示モード */}
                             <section className="settings-section">
-                                <h3 className="settings-section-title">表示モード</h3>
+                                <h3 className="settings-section-title">{t('settings.viewMode')}</h3>
                                 <div className="settings-row">
                                     {(['single', 'spread', 'auto'] as ViewMode[]).map((m) => (
                                         <label key={m} className={`settings-radio-label ${localViewMode === m ? 'active' : ''}`}>
@@ -96,13 +144,13 @@ export function SettingsModal({ onClose }: Props) {
                                                 checked={localViewMode === m}
                                                 onChange={() => setLocalViewMode(m)}
                                             />
-                                            {m === 'single' ? '1枚表示' : m === 'spread' ? '見開き (2枚)' : '自動判定'}
+                                            {m === 'single' ? t('settings.viewModeSingle') : m === 'spread' ? t('settings.viewModeSpread') : t('settings.viewModeAuto')}
                                         </label>
                                     ))}
                                 </div>
                                 {localViewMode === 'auto' && (
                                     <div className="settings-field">
-                                        <label className="settings-label">見開き判定 閾値（縦-横比）</label>
+                                        <label className="settings-label">{t('settings.autoThreshold')}</label>
                                         <div className="settings-slider-row">
                                             <input
                                                 type="range"
@@ -121,7 +169,7 @@ export function SettingsModal({ onClose }: Props) {
 
                             {/* 綴じ方向 */}
                             <section className="settings-section">
-                                <h3 className="settings-section-title">綴じ方向</h3>
+                                <h3 className="settings-section-title">{t('settings.binding')}</h3>
                                 <div className="settings-row">
                                     {(['rtl', 'ltr'] as Binding[]).map((b) => (
                                         <label key={b} className={`settings-radio-label ${localBinding === b ? 'active' : ''}`}>
@@ -132,7 +180,7 @@ export function SettingsModal({ onClose }: Props) {
                                                 checked={localBinding === b}
                                                 onChange={() => setLocalBinding(b)}
                                             />
-                                            {b === 'rtl' ? '右綴じ（日本語マンガ）' : '左綴じ（洋書）'}
+                                            {b === 'rtl' ? t('settings.bindingRTL') : t('settings.bindingLTR')}
                                         </label>
                                     ))}
                                 </div>
@@ -140,40 +188,40 @@ export function SettingsModal({ onClose }: Props) {
 
                             {/* ナビゲーション */}
                             <section className="settings-section">
-                                <h3 className="settings-section-title">ナビゲーション</h3>
+                                <h3 className="settings-section-title">{t('settings.navigation')}</h3>
                                 <label className="settings-toggle">
                                     <input
                                         type="checkbox"
                                         checked={localWrap}
                                         onChange={(e) => setLocalWrap(e.target.checked)}
                                     />
-                                    <span>端でループする（最後から最初に戻る）</span>
+                                    <span>{t('settings.wrapLoop')}</span>
                                 </label>
                             </section>
 
                             {/* ファイル読み込み */}
                             <section className="settings-section">
-                                <h3 className="settings-section-title">ファイル読み込み</h3>
+                                <h3 className="settings-section-title">{t('settings.fileLoading')}</h3>
                                 <label className="settings-toggle">
                                     <input
                                         type="checkbox"
                                         checked={localRecursive}
                                         onChange={(e) => setLocalRecursive(e.target.checked)}
                                     />
-                                    <span>サブフォルダも含めて画像を表示（再帰表示）</span>
+                                    <span>{t('settings.recursive')}</span>
                                 </label>
                             </section>
 
                             {/* メディア */}
                             <section className="settings-section">
-                                <h3 className="settings-section-title">メディア</h3>
+                                <h3 className="settings-section-title">{t('settings.media')}</h3>
                                 <label className="settings-toggle">
                                     <input
                                         type="checkbox"
                                         checked={localAutoPlay}
                                         onChange={(e) => setLocalAutoPlay(e.target.checked)}
                                     />
-                                    <span>動画・音声を自動再生する</span>
+                                    <span>{t('settings.autoPlayMedia')}</span>
                                 </label>
                             </section>
                         </>
@@ -185,12 +233,12 @@ export function SettingsModal({ onClose }: Props) {
                 </div>
                 
                 <div className="settings-footer">
-                    <button className="settings-btn settings-btn--cancel" onClick={onClose}>キャンセル</button>
+                    <button className="settings-btn settings-btn--cancel" onClick={onClose}>{t('common.cancel')}</button>
                     {activeTab === 'general' && (
-                        <button className="settings-btn settings-btn--apply" onClick={handleApply}>適用して閉じる</button>
+                        <button className="settings-btn settings-btn--apply" onClick={handleApply}>{t('common.apply')}</button>
                     )}
                     {activeTab !== 'general' && (
-                        <button className="settings-btn settings-btn--apply" onClick={onClose}>閉じる</button>
+                        <button className="settings-btn settings-btn--apply" onClick={onClose}>{t('common.close')}</button>
                     )}
                 </div>
             </div>

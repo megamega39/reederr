@@ -76,3 +76,16 @@
 .dropdownBtn:hover {
   color: var(--text-main);
 }
+
+.active {
+  background-color: var(--bg-selected) !important;
+  color: var(--win-accent) !important;
+}
+
+.sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border-main);
+  margin: 0 4px;
+  align-self: center;
+}

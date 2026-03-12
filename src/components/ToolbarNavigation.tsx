@@ -7,8 +7,10 @@ import {
 } from 'lucide-react';
 import { useViewerStore } from '../stores/viewerStore';
 import styles from './ViewerToolbar.module.css';
+import { useTranslation } from '../i18n';
 
 export function ToolbarNavigation() {
+    const { t } = useTranslation();
     const {
         imageEntries,
         selectedPath,
@@ -26,10 +28,10 @@ export function ToolbarNavigation() {
 
     return (
         <div className={`${styles.btnGroup} ${styles.left}`}>
-            <button onClick={goToFirst} title="最初のページへ" className={styles.btn}>
+            <button onClick={goToFirst} title={t('toolbar.firstPage')} className={styles.btn}>
                 <ChevronsLeft size={18} />
             </button>
-            <button onClick={goPrev} title="前のページへ" className={styles.btn}>
+            <button onClick={goPrev} title={t('toolbar.prevPage')} className={styles.btn}>
                 <ChevronLeft size={18} />
             </button>
 
@@ -37,10 +39,10 @@ export function ToolbarNavigation() {
                 {pageText}
             </div>
 
-            <button onClick={goNext} title="次のページへ" className={styles.btn}>
+            <button onClick={goNext} title={t('toolbar.nextPage')} className={styles.btn}>
                 <ChevronRight size={18} />
             </button>
-            <button onClick={goToLast} title="最後のページへ" className={styles.btn}>
+            <button onClick={goToLast} title={t('toolbar.lastPage')} className={styles.btn}>
                 <ChevronsRight size={18} />
             </button>
 
@@ -48,7 +50,7 @@ export function ToolbarNavigation() {
 
             <button
                 onClick={() => setSlideshowActive(!slideshowActive)}
-                title="スライドショー"
+                title={t('toolbar.slideshow')}
                 className={`${styles.btn} ${slideshowActive ? styles.btnActive : ''}`}
             >
                 <Clock size={18} />

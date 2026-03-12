@@ -72,6 +72,15 @@ function resizeToDataUrl(icon: Electron.NativeImage, size: IconSize): string {
 export async function getFileIcon(absPath: string, size: IconSize): Promise<string> {
   if (!absPath) return FALLBACK_FILE;
 
+  // Handle virtual paths (inside archives)
+  if (absPath.includes('!')) {
+    const ext = path.extname(absPath).toLowerCase();
+    const isImg = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(ext);
+    // Return generic file or image icon based on extension
+    // (Existing FALLBACK_FILE is a generic document icon)
+    return FALLBACK_FILE;
+  }
+
   let isDirectory: boolean;
   try {
     isDirectory = statSync(absPath).isDirectory();

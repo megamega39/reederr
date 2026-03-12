@@ -22,38 +22,38 @@ export function formatMtime(ms?: number): string {
   return `${y}/${mo}/${day} ${h}:${mi}`;
 }
 
-export function getFileType(entry: DirectoryEntry | null | undefined): string {
-  if (!entry) return 'ファイル';
-  if (entry.isDirectory) return 'フォルダ';
+export function getFileType(entry: DirectoryEntry | null | undefined, t: (key: string, data?: any) => string): string {
+  if (!entry) return t('fileType.file');
+  if (entry.isDirectory) return t('fileType.folder');
   if (entry.isArchive) {
     const dotIdx = (entry.name ?? '').lastIndexOf('.');
     const ext = (dotIdx >= 0 ? entry.name.slice(dotIdx + 1) : '').toUpperCase();
-    return ext ? `${ext} アーカイブ` : 'アーカイブ';
+    return ext ? t('fileType.extArchive', { ext }) : t('fileType.archive');
   }
   const dotIdx = (entry.name ?? '').lastIndexOf('.');
   const ext = (dotIdx >= 0 ? '.' + (entry.name ?? '').slice(dotIdx + 1) : '').toLowerCase();
   const typeMap: Record<string, string> = {
-    '.jpg': 'JPG ファイル',
-    '.jpeg': 'JPEG ファイル',
-    '.png': 'PNG ファイル',
-    '.gif': 'GIF ファイル',
-    '.webp': 'WebP ファイル',
-    '.bmp': 'BMP ファイル',
-    '.mp4': 'MP4 ファイル',
-    '.webm': 'WebM ファイル',
-    '.avi': 'AVI ファイル',
-    '.mkv': 'MKV ファイル',
-    '.mov': 'MOV ファイル',
-    '.wmv': 'WMV ファイル',
-    '.m4a': 'M4A ファイル',
-    '.m4v': 'M4V ファイル',
-    '.mp3': 'MP3 オーディオ',
-    '.wav': 'WAV オーディオ',
-    '.ogg': 'OGG オーディオ',
-    '.flac': 'FLAC オーディオ',
-    '.aac': 'AAC オーディオ',
+    '.jpg': t('fileType.image'),
+    '.jpeg': t('fileType.image'),
+    '.png': t('fileType.image'),
+    '.gif': t('fileType.image'),
+    '.webp': t('fileType.image'),
+    '.bmp': t('fileType.image'),
+    '.mp4': t('fileType.video'),
+    '.webm': t('fileType.video'),
+    '.avi': t('fileType.video'),
+    '.mkv': t('fileType.video'),
+    '.mov': t('fileType.video'),
+    '.wmv': t('fileType.video'),
+    '.m4a': t('fileType.audio'),
+    '.m4v': t('fileType.video'),
+    '.mp3': t('fileType.extAudio', { ext: 'MP3' }),
+    '.wav': t('fileType.extAudio', { ext: 'WAV' }),
+    '.ogg': t('fileType.extAudio', { ext: 'OGG' }),
+    '.flac': t('fileType.extAudio', { ext: 'FLAC' }),
+    '.aac': t('fileType.extAudio', { ext: 'AAC' }),
   };
-  return typeMap[ext] ?? (ext ? `${ext.slice(1).toUpperCase()} ファイル` : 'ファイル');
+  return typeMap[ext] ?? (ext ? t('fileType.extFile', { ext: ext.slice(1).toUpperCase() }) : t('fileType.file'));
 }
 
 export function getParentPath(p: string): string | null {

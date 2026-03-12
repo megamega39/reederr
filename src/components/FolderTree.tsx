@@ -4,9 +4,11 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useViewerStore } from '../stores/viewerStore';
 import { normalizePath, isArchivePath, getParentPath, resolveArchivePath } from '../stores/viewerStore.utils';
 import { FileIcon } from './FileIcon';
+import { useLayoutStore } from '../stores/layoutStore';
 import { FolderContextMenu } from './FolderContextMenu';
 import { FileSystemAPI } from '../services/api';
 import { ChevronRight, ChevronDown, Star } from 'lucide-react';
+import { useTranslation } from '../i18n';
 
 interface FlatNode {
   id: string;
@@ -22,6 +24,7 @@ interface FlatNode {
 }
 
 export function FolderTree() {
+  const { t } = useTranslation();
   const { treeRoots, treeChildren, expandedPaths, favorites, currentPath, error } = useViewerStore(
     useShallow((s) => ({
       treeRoots: s.treeRoots,
@@ -76,7 +79,7 @@ export function FolderTree() {
     // Favorites Section
     nodes.push({
       id: 'favorite-header',
-      name: 'お気に入り',
+      name: t('tree.favorites'),
       path: 'favorites',
       depth: 0,
       isDirectory: true,
@@ -109,13 +112,13 @@ export function FolderTree() {
     // Drive/Root Section
     treeRoots.forEach(root => {
       const normPath = normalizePath(root.path);
-      const isVirtual = normPath === 'pc';
-      const prefix = isVirtual ? 'pc' : 'special';
+      const isVirtual = normPath === 'pc' || normPath === 'network';
+      const prefix = normPath === 'pc' ? 'pc' : (normPath === 'network' ? 'network' : 'special');
       const nodeKey = `${prefix}-${normPath}`;
       
       nodes.push({
         id: nodeKey,
-        name: root.name,
+        name: (root.path === 'pc' || root.path === 'network') ? t(`tree.${root.path}` as any) : root.name,
         path: normPath,
         depth: 0,
         isDirectory: true,
@@ -238,10 +241,10 @@ export function FolderTree() {
   if (treeRoots.length === 0) {
     return (
       <div className="folder-tree">
-        <div className="folder-tree-header">フォルダ</div>
+        <div className="folder-tree-header">{t('settings.fileLoading')}</div>
         <div className="folder-tree-content" ref={parentRef}>
           <div className="folder-tree-empty">
-            {error ? `⚠ ${error}` : '読み込み中...'}
+            {error ? `⚠ ${error}` : t('common.loading')}
           </div>
         </div>
       </div>
@@ -250,7 +253,7 @@ export function FolderTree() {
 
   return (
     <div className="folder-tree">
-      <div className="folder-tree-header">フォルダ</div>
+      <div className="folder-tree-header">{t('settings.fileLoading')}</div>
       <div className="folder-tree-content" ref={parentRef} style={{ height: '100%', overflow: 'auto' }}>
         <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
           {virtualizer.getVirtualItems().map((vItem) => {
@@ -300,6 +303,7 @@ function TreeItemRow({
   const treeChildren = useViewerStore((s) => s.treeChildren);
   const editingNodeId = useViewerStore((s) => s.editingNodeId);
   const setEditingNodeId = useViewerStore((s) => s.setEditingNodeId);
+  const setHoveredItem = useLayoutStore((s) => s.setHoveredItem);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -394,6 +398,8 @@ function TreeItemRow({
         style={{ paddingLeft: node.depth * 12 + 8 }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
+        onMouseEnter={(e) => setHoveredItem(node.path, { x: e.clientX, y: e.clientY })}
+        onMouseLeave={() => setHoveredItem(null)}
       >
         <span
           className={`tree-expand ${isExpandable ? '' : 'empty'}`}
@@ -405,7 +411,7 @@ function TreeItemRow({
         {node.isFavoriteHeader ? (
           <Star size={14} style={{ marginRight: 4, color: '#f1c40f' }} fill="#f1c40f" />
         ) : (
-          <FileIcon path={node.isVirtual ? 'C:\\' : node.path} isDirectory={node.isDirectory} size={16} />
+          <FileIcon path={node.prefix === 'pc' ? 'C:\\' : (node.prefix === 'network' ? (node.path === 'network' ? 'network' : node.path) : node.path)} isDirectory={node.isDirectory} size={16} />
         )}
         
         {editingNodeId === node.path ? (

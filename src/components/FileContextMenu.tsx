@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { FileSystemAPI, SystemAPI } from '../services/api';
 import { useExternalToolStore } from '../stores/externalToolStore';
 import { RenameOverlay } from './RenameOverlay';
+import { useTranslation } from '../i18n';
 
 export interface FileContextMenuProps {
   x: number;
@@ -27,6 +28,7 @@ export function FileContextMenu({
   onDeleted,
   onRenamed,
 }: FileContextMenuProps) {
+  const { t } = useTranslation();
   const externalTools = useExternalToolStore((s) => s.tools);
   const [showRename, setShowRename] = useState(false);
   useEffect(() => {
@@ -90,7 +92,7 @@ export function FileContextMenu({
 
   const handleDelete = async () => {
     try {
-      if (!window.confirm('このファイルをごみ箱に移動しますか？')) {
+      if (!window.confirm(t('dialog.confirmDeleteFile'))) {
         onClose();
         return;
       }
@@ -114,28 +116,28 @@ export function FileContextMenu({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="folder-context-menu-item" onClick={handleOpenInExplorer}>
-        エクスプローラで開く
+        {t('contextMenu.openInExplorer')}
       </div>
       <div className="folder-context-menu-sep" />
       <div className="folder-context-menu-item" onClick={handleCopyPath}>
-        パスをコピー
+        {t('contextMenu.copyPath')}
       </div>
       {parentPath && (
         <div className="folder-context-menu-item" onClick={handleCopyParentPath}>
-          親フォルダのパスをコピー
+          {t('contextMenu.copyParentPath')}
         </div>
       )}
       <div className="folder-context-menu-item" onClick={handleShowInExplorer}>
-        エクスプローラでファイルを表示
+        {t('contextMenu.showInExplorer')}
       </div>
       {!isVirtual && (
         <>
           <div className="folder-context-menu-sep" />
           <div className="folder-context-menu-item" onClick={handleRename}>
-            名前の変更
+            {t('contextMenu.rename')}
           </div>
           <div className="folder-context-menu-item" onClick={handleDelete}>
-            削除
+            {t('contextMenu.delete')}
           </div>
         </>
       )}
@@ -149,7 +151,7 @@ export function FileContextMenu({
             onClose();
           }}
         >
-          {tool.name} で開く
+          {t('contextMenu.openWith', { name: tool.name })}
         </div>
       ))}
       {showRename && (

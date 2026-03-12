@@ -39,8 +39,10 @@ export interface ViewerState {
   isRestoring: boolean;
   editingNodeId: string | null;
   fileListFilter: string;
+  language: 'ja' | 'en';
 
   // Actions
+  setLanguage: (lang: 'ja' | 'en') => void;
   setTreeRoots: (roots: TreeRoot[]) => void;
   setWrapNavigation: (v: boolean) => void;
   setCurrentPath: (path: string | null) => void;

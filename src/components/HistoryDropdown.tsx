@@ -1,6 +1,7 @@
 import { Check, Folder, FileArchive, Monitor, File } from 'lucide-react';
 import { useViewerStore } from '../stores/viewerStore';
 import { useEffect, useRef, useState, useLayoutEffect } from 'react';
+import { useTranslation } from '../i18n';
 
 interface HistoryDropdownProps {
     onClose: () => void;
@@ -8,6 +9,7 @@ interface HistoryDropdownProps {
 }
 
 export function HistoryDropdown({ onClose, anchorRect }: HistoryDropdownProps) {
+    const { t } = useTranslation();
     const { history, historyIndex, jumpToHistory } = useViewerStore();
     const dropdownRef = useRef<HTMLDivElement>(null);
     const [leftPos, setLeftPos] = useState(0);
@@ -57,8 +59,8 @@ export function HistoryDropdown({ onClose, anchorRect }: HistoryDropdownProps) {
 
     const getTypeText = (type: string) => {
         switch (type) {
-            case 'folder': return '<フォルダ>';
-            case 'archive': return '<書庫>';
+            case 'folder': return `<${t('fileType.folder')}>`;
+            case 'archive': return `<${t('fileType.archive')}>`;
             case 'pc': return '<PC>';
             default: return '';
         }
