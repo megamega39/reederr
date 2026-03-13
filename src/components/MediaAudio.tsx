@@ -1,17 +1,17 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
 import styles from './MediaView.module.css';
 
 interface Props {
     src: string;
-    name: string;
     autoPlay: boolean;
     loop: boolean;
     onEnded: () => void;
 }
 
-export function MediaAudio({ src, name, autoPlay, loop, onEnded }: Props) {
+export function MediaAudio({ src, autoPlay, loop, onEnded }: Props) {
     const audioRef = useRef<HTMLAudioElement>(null);
+    const [isReady, setIsReady] = useState(false);
     const { playbackRate, preservesPitch } = useMediaPlayerStore();
 
     useEffect(() => {
@@ -39,11 +39,16 @@ export function MediaAudio({ src, name, autoPlay, loop, onEnded }: Props) {
                 controls
                 autoPlay={autoPlay}
                 preload="metadata"
+                onLoadedData={() => setIsReady(true)}
                 onEnded={onEnded}
                 className="media-audio"
-                style={{ width: '100%', maxWidth: 480 }}
+                style={{ 
+                    width: '100%', 
+                    maxWidth: 480,
+                    opacity: isReady ? 1 : 0,
+                    transition: 'opacity 0.2s'
+                }}
             />
-            <span className="media-audio-filename">{name}</span>
         </div>
     );
 }

@@ -15,6 +15,7 @@ interface FileIconProps {
   isDirectory?: boolean;
   className?: string;
   size?: number;
+  style?: React.CSSProperties;
 }
 
 export function FileIcon({
@@ -22,6 +23,7 @@ export function FileIcon({
   isDirectory = false,
   className = '',
   size = 16,
+  style = {},
 }: FileIconProps) {
   const iconSizeNum: 16 | 20 = size >= 20 ? 20 : 16;
   const cacheKey = path ? getCacheKey(path, iconSizeNum) : '';
@@ -40,10 +42,10 @@ export function FileIcon({
     let cancelled = false;
     FileSystemAPI
       .getFileIcon(path, iconSizeNum)
-      .then((url) => {
-        if (!cancelled && url) {
-          iconCache.set(key, url);
-          setDataUrl(url);
+      .then((res) => {
+        if (!cancelled && res && res.ok && res.value) {
+          iconCache.set(key, String(res.value));
+          setDataUrl(String(res.value));
         }
       })
       .catch(() => {
@@ -57,10 +59,10 @@ export function FileIcon({
   const iconSize = size === 20 ? 20 : 16;
 
   if (path === 'pc') {
-    return <Monitor size={iconSize} className={className} style={{ flexShrink: 0 }} />;
+    return <Monitor size={iconSize} className={className} style={{ flexShrink: 0, ...style }} />;
   }
   if (path === 'network') {
-    return <Network size={iconSize} className={className} style={{ flexShrink: 0 }} />;
+    return <Network size={iconSize} className={className} style={{ flexShrink: 0, ...style }} />;
   }
 
   if (!path) {
@@ -75,6 +77,7 @@ export function FileIcon({
           alignItems: 'center',
           justifyContent: 'center',
           fontSize: iconSize - 2,
+          ...style
         }}
       >
         {isDirectory ? '📁' : '📄'}
@@ -90,7 +93,7 @@ export function FileIcon({
         className={className}
         width={iconSize}
         height={iconSize}
-        style={{ flexShrink: 0, objectFit: 'contain' }}
+        style={{ flexShrink: 0, objectFit: 'contain', ...style }}
       />
     );
   }
@@ -106,6 +109,7 @@ export function FileIcon({
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: iconSize - 2,
+        ...style
       }}
     >
       {isDirectory ? '📁' : '📄'}

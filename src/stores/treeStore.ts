@@ -2,27 +2,28 @@ import { create } from 'zustand';
 import { FileSystemAPI } from '../services/api';
 import { DirectoryEntry } from '../types';
 import { normalizePath, getParentPath, ensureOpenedPath } from './viewerStore.utils';
+import { AnyPath, toAnyPath } from '../types/paths';
 import { useFavoriteStore } from './favoriteStore';
 import { useAppStore } from './appStore';
 import { useLayoutStore } from './layoutStore';
 
 export interface TreeState {
   treeRoots: { name: string; path: string }[];
-  expandedPaths: Record<string, boolean>;
-  treeChildren: Record<string, DirectoryEntry[]>;
-  loadingPaths: Record<string, boolean>;
+  expandedPaths: Record<AnyPath, boolean>;
+  treeChildren: Record<AnyPath, DirectoryEntry[]>;
+  loadingPaths: Record<AnyPath, boolean>;
   editingNodeId: string | null;
 
-  setTreeRoots: (roots: { name: string; path: string }[]) => void;
+  setTreeRoots: (roots: { name: string; path: AnyPath }[]) => void;
   setEditingNodeId: (id: string | null) => void;
-  toggleExpand: (path: string) => void;
-  expandPath: (path: string) => void;
-  refreshTreeChildren: (path: string) => void;
-  ensureTreeChildren: (idOrPath: string) => Promise<void>;
+  toggleExpand: (path: AnyPath | string) => void;
+  expandPath: (path: AnyPath | string) => void;
+  refreshTreeChildren: (path: AnyPath) => void;
+  ensureTreeChildren: (idOrPath: AnyPath | string) => Promise<void>;
   initTree: () => Promise<void>;
-  expandAncestors: (path: string) => void;
+  expandAncestors: (path: AnyPath) => void;
   initExpandedFolders: () => Promise<void>;
-  revealPath: (path: string) => Promise<void>;
+  revealPath: (path: AnyPath) => Promise<void>;
 }
 
 export const useTreeStore = create<TreeState>((set, get) => ({
@@ -37,14 +38,14 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   
   toggleExpand: (nodeId) =>
     set((s) => {
-      const isExpanding = !s.expandedPaths[nodeId];
+      const isExpanding = !s.expandedPaths[nodeId as AnyPath];
       const nextExpanded = { ...s.expandedPaths };
       
       if (isExpanding) {
-        nextExpanded[nodeId] = true;
+        nextExpanded[nodeId as AnyPath] = true;
       } else {
         // Collapsing: Clean up descendant expansion states to prevent "ghost" expansions
-        delete nextExpanded[nodeId];
+        delete nextExpanded[nodeId as AnyPath];
         
         // Find and remove descendants
         const descendantPrefix = (nodeId === 'pc-pc') ? 'pc-' : 
@@ -55,12 +56,12 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           if (descendantPrefix) {
             // For virtual roots, anything starting with the prefix (except the root itself) is a descendant
             if (key.startsWith(descendantPrefix) && key !== nodeId) {
-              delete nextExpanded[key];
+              delete nextExpanded[key as AnyPath];
             }
           } else {
             // For normal folders/archives, use path separators
             if (key.startsWith(nodeId + '/') || key.startsWith(nodeId + '!')) {
-              delete nextExpanded[key];
+              delete nextExpanded[key as AnyPath];
             }
           }
         });
@@ -71,7 +72,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     
   expandPath: (path) =>
     set((s) => ({
-      expandedPaths: { ...s.expandedPaths, [path]: true },
+      expandedPaths: { ...s.expandedPaths, [path as AnyPath]: true },
     })),
 
   refreshTreeChildren: (path) => {
@@ -108,25 +109,29 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       const lowerResolved = resolvedPath.toLowerCase();
 
       if (lowerResolved === 'pc') {
-        const drives = (await FileSystemAPI.getDrives()) || [];
-        children = drives.map((d) => ({ 
-          name: d.name, 
-          path: normalizePath(d.path),
-          isDirectory: true, 
-          isArchive: false 
-        }));
+        const res = await FileSystemAPI.getDrives();
+        if (res.ok) {
+          children = res.value.map((d) => ({ 
+            name: d.name, 
+            path: normalizePath(d.path),
+            isDirectory: true, 
+            isArchive: false 
+          }));
+        }
       } else if (lowerResolved === 'network') {
-        const resources = (await FileSystemAPI.getNetworkResources()) || [];
-        children = resources.map((r) => ({ 
-          name: r.name, 
-          path: normalizePath(r.path), 
-          isDirectory: true, 
-          isArchive: false 
-        }));
+        const res = await FileSystemAPI.getNetworkResources();
+        if (res.ok) {
+          children = res.value.map((r) => ({ 
+            name: r.name, 
+            path: normalizePath(r.path), 
+            isDirectory: true, 
+            isArchive: false 
+          }));
+        }
       } else {
         // Windows Fix: Drives like "C:" need a trailing slash for some readdir implementations
         // although normalizePath removes it, the Backend usually needs it for roots.
-        let fetchPath = resolvedPath;
+        let fetchPath: string = resolvedPath;
         if (fetchPath.match(/^[a-zA-Z]:$/)) {
           fetchPath += '/';
         }
@@ -169,10 +174,18 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
     const tryInit = async (): Promise<void> => {
       try {
-        const roots = await FileSystemAPI.getSpecialFolders();
-        const pc = { name: 'PC', path: 'pc' };
-        const network = { name: 'network', path: 'network' };
-        setTreeRoots([...roots, pc, network]);
+        const res = await FileSystemAPI.getSpecialFolders();
+        if (res.ok) {
+          const pc = { name: 'PC', path: toAnyPath('pc') };
+          const network = { name: 'network', path: toAnyPath('network') };
+          const rootsWithPaths = res.value.map(v => ({
+            ...v,
+            path: normalizePath(v.path)
+          }));
+          setTreeRoots([...rootsWithPaths, pc, network]);
+        } else {
+          throw new Error(res.error);
+        }
       } catch (err) {
         useAppStore.getState().setError(err instanceof Error ? err.message : String(err));
       }
@@ -180,7 +193,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     await tryInit();
   },
 
-  expandAncestors: (path: string) => {
+  expandAncestors: (path: AnyPath) => {
     if (!path || path === 'pc') return;
     set((s) => ({ expandedPaths: { ...s.expandedPaths, [path]: true } }));
     const parent = getParentPath(path);
@@ -191,8 +204,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   initExpandedFolders: async () => {
     const { expandedPaths, ensureTreeChildren } = get();
-    const paths = Object.keys(expandedPaths).filter(p => expandedPaths[p]);
-    await Promise.all(paths.map(p => ensureTreeChildren(p)));
+    const paths = Object.keys(expandedPaths).filter(p => expandedPaths[p as AnyPath]);
+    await Promise.all(paths.map(p => ensureTreeChildren(p as AnyPath)));
   },
 
   revealPath: async (path: string) => {
@@ -254,31 +267,31 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       
       const sub = targetPath.slice(rootPath.length).replace(/^[/\\]+/, '');
       if (sub) {
-        let acc = rootPath;
+        let acc: string = rootPath;
         const parts = sub.split(/[/\\]/);
         for (const part of parts) {
           if (!part) continue;
           if (part.includes('!')) {
             const [archive, ...rest] = part.split('!');
             acc += (acc.endsWith('/') ? '' : '/') + archive;
-            breadcrumbs.push(`${prefix}-${normalizePath(acc)}`);
+            breadcrumbs.push(`${prefix}-${normalizePath(acc as AnyPath)}`);
             acc += '!';
             for (let i = 0; i < rest.length; i++) {
               if (rest[i]) {
                 acc += (i > 0 ? '/' : '') + rest[i];
-                breadcrumbs.push(`${prefix}-${normalizePath(acc)}`);
+                breadcrumbs.push(`${prefix}-${normalizePath(acc as AnyPath)}`);
               }
             }
           } else {
             acc += (acc.endsWith('/') || acc.endsWith('!')) ? '' : '/';
             acc += part;
-            breadcrumbs.push(`${prefix}-${normalizePath(acc)}`);
+            breadcrumbs.push(`${prefix}-${normalizePath(acc as AnyPath)}`);
           }
         }
       }
     } else {
       breadcrumbs.push('pc-pc');
-      let acc = '';
+      let acc: string = '';
       const parts = targetPath.split(/[/\\]/);
       for (const part of parts) {
         if (!part) continue;
@@ -286,18 +299,18 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           const [archive, ...rest] = part.split('!');
           if (acc && !acc.endsWith('/') && !acc.endsWith('!')) acc += '/';
           acc += archive;
-          breadcrumbs.push(`pc-${normalizePath(acc)}`);
+          breadcrumbs.push(`pc-${normalizePath(acc as AnyPath)}`);
           acc += '!';
           for (let i = 0; i < rest.length; i++) {
             if (rest[i]) {
               acc += (i > 0 ? '/' : '') + rest[i];
-              breadcrumbs.push(`pc-${normalizePath(acc)}`);
+              breadcrumbs.push(`pc-${normalizePath(acc as AnyPath)}`);
             }
           }
         } else {
           if (acc && !acc.endsWith('/') && !acc.endsWith('!')) acc += '/';
           acc += part;
-          breadcrumbs.push(`pc-${normalizePath(acc)}`);
+          breadcrumbs.push(`pc-${normalizePath(acc as AnyPath)}`);
         }
       }
     }
@@ -309,7 +322,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       
       // Apply breadcrumbs for the current reveal
       uniqueIds.forEach(id => {
-        nextExpanded[id] = true;
+        nextExpanded[id as AnyPath] = true;
       });
       
       return { expandedPaths: nextExpanded };

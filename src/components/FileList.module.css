@@ -78,6 +78,7 @@
   flex: 1;
   overflow: auto;
   padding: 2px 0;
+  contain: strict; /* Optimization: isolate virtual list which has absolute children and fixed height */
 }
 
 .item {
@@ -130,21 +131,32 @@
   color: var(--text-error);
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .loadingOverlay {
   position: absolute;
   bottom: 10px;
   right: 10px;
   background: rgba(0, 0, 0, 0.5);
-  padding: 4px 12px;
-  border-radius: 2px;
+  padding: 8px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
   color: #fff;
-  font-size: var(--font-size-sm);
   pointer-events: none;
-  opacity: 1;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 .errorOverlay {

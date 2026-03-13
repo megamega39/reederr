@@ -25,6 +25,9 @@ export function SettingsModal({ onClose }: Props) {
     const [localWrap, setLocalWrap] = useState(settings.wrapNavigation);
     const [localAutoPlay, setLocalAutoPlay] = useState(settings.autoPlay);
     const [localLanguage, setLocalLanguage] = useState(settings.language as 'ja' | 'en');
+    const [localAutoSpreadCover, setLocalAutoSpreadCover] = useState(settings.autoSpreadCover);
+    const [localGridSize, setLocalGridSize] = useState(settings.gridThumbnailSize);
+    const [localHoverSize, setLocalHoverSize] = useState(settings.hoverPreviewSize);
 
     const handleApply = () => {
         settings.setViewMode(localViewMode);
@@ -33,9 +36,12 @@ export function SettingsModal({ onClose }: Props) {
         settings.setWrapNavigation(localWrap);
         settings.setAutoPlay(localAutoPlay);
         settings.setLanguage(localLanguage);
+        settings.setAutoSpreadCover(localAutoSpreadCover);
         
         const oldRecursive = settings.recursiveMedia;
         settings.setRecursiveMedia(localRecursive);
+        settings.setGridThumbnailSize(localGridSize);
+        settings.setHoverPreviewSize(localHoverSize);
 
         if (localRecursive !== oldRecursive && currentPath) {
             loadDirectory(currentPath, { pushHistory: false });
@@ -168,6 +174,14 @@ export function SettingsModal({ onClose }: Props) {
                                     />
                                     <span>{t('settings.wrapLoop')}</span>
                                 </label>
+                                <label className="settings-toggle">
+                                    <input
+                                        type="checkbox"
+                                        checked={localAutoSpreadCover}
+                                        onChange={(e) => setLocalAutoSpreadCover(e.target.checked)}
+                                    />
+                                    <span>{t('settings.autoSpreadCover')}</span>
+                                </label>
                             </section>
 
                             {/* ファイル読み込み */}
@@ -194,6 +208,41 @@ export function SettingsModal({ onClose }: Props) {
                                     />
                                     <span>{t('settings.autoPlayMedia')}</span>
                                 </label>
+                            </section>
+
+                            {/* グリッド表示設定 */}
+                            <section className="settings-section">
+                                <h3 className="settings-section-title">{t('settings.gridView')}</h3>
+                                <div className="settings-field">
+                                    <label className="settings-label">{t('settings.gridSize')}</label>
+                                    <div className="settings-slider-row">
+                                        <input
+                                            type="range"
+                                            min={80}
+                                            max={500}
+                                            step={10}
+                                            value={localGridSize}
+                                            onChange={(e) => setLocalGridSize(parseInt(e.target.value))}
+                                            className="settings-slider"
+                                        />
+                                        <span className="settings-slider-val">{localGridSize}px</span>
+                                    </div>
+                                </div>
+                                <div className="settings-field">
+                                    <label className="settings-label">{t('settings.hoverSize')}</label>
+                                    <div className="settings-slider-row">
+                                        <input
+                                            type="range"
+                                            min={160}
+                                            max={500}
+                                            step={20}
+                                            value={localHoverSize}
+                                            onChange={(e) => setLocalHoverSize(parseInt(e.target.value))}
+                                            className="settings-slider"
+                                        />
+                                        <span className="settings-slider-val">{localHoverSize}px</span>
+                                    </div>
+                                </div>
                             </section>
                         </>
                     ) : activeTab === 'shortcuts' ? (

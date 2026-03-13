@@ -1,15 +1,14 @@
-import { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { normalizePath } from '../stores/viewerStore.utils';
 import { FileIcon } from './FileIcon';
 import styles from './FileGridView.module.css';
 import type { DirectoryEntry } from '../types';
 import { FileSystemAPI } from '../services/api';
-import { useLayoutStore } from '../stores/layoutStore';
+import { useSettingsStore } from '../stores/settingsStore';
 
 interface FileGridViewProps {
   entries: DirectoryEntry[];
-  selectedPath: string | null;
   selectedPaths: string[];
   onSelect: (entry: DirectoryEntry, e: React.MouseEvent) => void;
   onDoubleClick: (entry: DirectoryEntry) => void;
@@ -22,26 +21,27 @@ interface GridItemProps {
   onSelect: (entry: DirectoryEntry, e: React.MouseEvent) => void;
   onDoubleClick: (entry: DirectoryEntry) => void;
   onContextMenu: (e: React.MouseEvent, entry: DirectoryEntry) => void;
+  thumbnailSize: number;
 }
 
-function GridItem({ entry, isSelected, onSelect, onDoubleClick, onContextMenu }: GridItemProps) {
+const GridItem = React.memo(({ entry, isSelected, onSelect, onDoubleClick, onContextMenu, thumbnailSize }: GridItemProps) => {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-  const setHoveredItem = useLayoutStore((s) => s.setHoveredItem);
 
   useEffect(() => {
     let active = true;
+    const abortController = new AbortController();
 
     const loadThumb = async () => {
-      // Basic check for image/archive extensions or directory to avoid unnecessary calls
       const ext = entry.path.split('.').pop()?.toLowerCase();
       const supportThumbs = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'zip', 'rar', '7z', 'cbz', 'cbr'];
       const isSupportable = entry.isDirectory || (ext && supportThumbs.includes(ext));
 
       if (isSupportable) {
         try {
-          const url = await FileSystemAPI.getThumbnail(entry.path, 120, 120);
-          if (active && url) {
-            setThumbUrl(url);
+          // Pass abort signal if API supports it, otherwise rely on 'active' flag
+          const res = await FileSystemAPI.getThumbnail(entry.path, thumbnailSize, thumbnailSize);
+          if (active && res.ok && res.value) {
+            setThumbUrl(res.value);
           }
         } catch (err) {
           // ignore
@@ -50,16 +50,11 @@ function GridItem({ entry, isSelected, onSelect, onDoubleClick, onContextMenu }:
     };
 
     loadThumb();
-    return () => { active = false; };
-  }, [entry.path, entry.isDirectory]);
-
-  const handleMouseEnter = (e: React.MouseEvent) => {
-    setHoveredItem(entry.path, { x: e.clientX, y: e.clientY });
-  };
-
-  const handleMouseLeave = () => {
-    setHoveredItem(null);
-  };
+    return () => { 
+      active = false;
+      abortController.abort();
+    };
+  }, [entry.path, entry.isDirectory, thumbnailSize]);
 
   return (
     <div
@@ -67,12 +62,10 @@ function GridItem({ entry, isSelected, onSelect, onDoubleClick, onContextMenu }:
       onClick={(ev) => onSelect(entry, ev)}
       onDoubleClick={() => onDoubleClick(entry)}
       onContextMenu={(ev) => onContextMenu(ev, entry)}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       <div className={styles.thumbnailBox}>
         {thumbUrl ? (
-          <img src={thumbUrl} className={styles.thumbnailImg} alt="" />
+          <img src={thumbUrl} className={styles.thumbnailImg} alt="" loading="lazy" />
         ) : (
           <FileIcon path={entry.path} isDirectory={entry.isDirectory} size={48} />
         )}
@@ -82,7 +75,9 @@ function GridItem({ entry, isSelected, onSelect, onDoubleClick, onContextMenu }:
       </div>
     </div>
   );
-}
+});
+
+GridItem.displayName = 'GridItem';
 
 export function FileGridView({
   entries,
@@ -91,21 +86,59 @@ export function FileGridView({
   onDoubleClick,
   onContextMenu,
 }: FileGridViewProps) {
+  const { gridThumbnailSize } = useSettingsStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
 
-  // Simple fixed grid for now. Ideally use a ResizeObserver to calculate columnCount
-  const columnCount = 5; 
+  // Dynamic column calculation
+  useEffect(() => {
+    if (!parentRef.current) return;
+    
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(parentRef.current);
+    setContainerWidth(parentRef.current.clientWidth);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const effectiveSize = gridThumbnailSize || 160;
+  
+  // Use a more aggressive calculation to fit more columns.
+  // containerWidth is already the inner width (contentRect.width).
+  // We want to fit N items of (effectiveSize + small_overhead).
+  // Overhead per item is approx 16px (padding) + 8px (gap) = 24px.
+  // But we can be tighter: let's use 12px overhead for the math to allow close fits.
+  const columnCount = Math.max(1, Math.floor(containerWidth / (effectiveSize + 12)));
   const rowCount = Math.ceil(entries.length / columnCount);
 
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 160, // Height of each row (increased for margins)
-    overscan: 5,
+    estimateSize: () => effectiveSize + 60, // size + padding(16) + text(~34) + margin(8)
+    overscan: 3,
   });
 
+  const virtualRows = virtualizer.getVirtualItems();
+  
+  // Force re-measure when thumbnail size changes to update row heights correctly
+  useEffect(() => {
+    virtualizer.measure();
+  }, [effectiveSize, virtualizer]);
+
   return (
-    <div className={styles.gridContainer} ref={parentRef}>
+    <div 
+      className={styles.gridContainer} 
+      ref={parentRef} 
+      tabIndex={0}
+      style={{
+        ['--thumb-size' as any]: `${gridThumbnailSize || 160}px`,
+      }}
+    >
       <div
         className={styles.gridInner}
         style={{
@@ -114,7 +147,7 @@ export function FileGridView({
           width: '100%',
         }}
       >
-        {virtualizer.getVirtualItems().map((virtualRow) => {
+        {virtualRows.map((virtualRow) => {
           const rowStartIdx = virtualRow.index * columnCount;
           const rowEntries = entries.slice(rowStartIdx, rowStartIdx + columnCount);
 
@@ -132,7 +165,7 @@ export function FileGridView({
                 display: 'grid',
                 gridTemplateColumns: `repeat(${columnCount}, 1fr)`,
                 gap: '8px',
-                padding: '8px',
+                padding: '0 8px',
               }}
             >
               {rowEntries.map((e) => {
@@ -145,6 +178,7 @@ export function FileGridView({
                     onSelect={onSelect}
                     onDoubleClick={onDoubleClick}
                     onContextMenu={onContextMenu}
+                    thumbnailSize={gridThumbnailSize}
                   />
                 );
               })}

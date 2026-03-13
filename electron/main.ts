@@ -1,4 +1,17 @@
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
 import { app, BrowserWindow, protocol } from 'electron';
+
+const _filename = fileURLToPath(import.meta.url);
+const _dirname = dirname(_filename);
+
+// polyfill for some libraries that expect CJS globals
+if (typeof __filename === 'undefined') {
+  (globalThis as any).__filename = _filename;
+}
+if (typeof __dirname === 'undefined') {
+  (globalThis as any).__dirname = _dirname;
+}
 import { registerMediaProtocol } from './mediaProtocol';
 import { registerReederrProtocol } from './reederrProtocol';
 import { registerThumbnailProtocol } from './thumbnails/protocol';
@@ -11,6 +24,7 @@ import { createWindow, getMainWindow } from './window';
 import { buildMenu } from './menu';
 import { registerIpcHandlers } from './ipc';
 import { logger } from './utils/logger';
+import { processManager } from './utils/processRunner';
 
 // Log unhandled errors
 process.on('uncaughtException', (err) => {
@@ -41,6 +55,10 @@ let httpMediaServer: { getMediaUrl: (id: string) => string; close: () => void } 
 app.whenReady().then(async () => {
   logger.info('Application starting...');
   const userDataPath = app.getPath('userData');
+
+  // 1. Run Migration (JSON to SQLite)
+  const { runMigration } = await import('./db/migration');
+  runMigration();
 
   // 1. Core protocols (Fast)
   registerMediaProtocol(getMediaPathMap());
@@ -83,4 +101,9 @@ app.on('window-all-closed', () => {
   disposeAllTemp();
   cleanupTempExtract();
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+  logger.info('Application will quit, cleaning up processes...');
+  processManager.killAll();
 });

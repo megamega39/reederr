@@ -25,3 +25,9 @@ export function isArchiveExtension(path: string): boolean {
     if (typeof path !== 'string') return false;
     return /\.(zip|cbz|rar|cbr|7z|tar|gz|bz2|xz|iso|lzh|lha)$/i.test(path);
 }
+
+export function isRarArchive(path: string): boolean {
+    if (typeof path !== 'string') return false;
+    const lower = path.toLowerCase();
+    return lower.endsWith('.rar') || lower.endsWith('.cbr');
+}

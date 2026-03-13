@@ -37,7 +37,8 @@ export function AddressBar() {
   const getSegments = () => {
     if (!currentPath) return [];
     
-    const split = splitArchivePath(currentPath);
+    const pathStr = currentPath as string;
+    const split = splitArchivePath(pathStr);
     const archivePath = split ? split[0] : null;
     const innerPath = split ? split[1] : null;
 
@@ -65,7 +66,7 @@ export function AddressBar() {
       return segments;
     } else {
       // Local Breadcrumbs
-      const parts = currentPath.split(/[/\\]/).filter(Boolean);
+      const parts = pathStr.split(/[/\\]/).filter(Boolean);
       const segments: { name: string; path: string; isArchive: boolean }[] = [];
       let current = '';
       parts.forEach((part, i) => {

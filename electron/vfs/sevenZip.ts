@@ -6,6 +6,8 @@ import { platform } from 'node:os';
 import { get7zPath } from '../sevenZipPath';
 import { logger } from '../utils/logger';
 import { toLongPathIfNeeded } from '../utils/longPath';
+import { processManager, ExternalProcessManager } from '../utils/processRunner';
+import { splitArchivePath } from './utils';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const WINDOWS_MAX_PATH = 260;
@@ -95,7 +97,16 @@ export function parse7zListOutput(stdout: string): SevenZipEntry[] {
     pushProcessedEntry(entries, currentEntry);
   }
 
-  return entries;
+  // Filter out the archive-level info block which has 'Type' but usually lacks 'Attributes' 
+  // or has the same Path as the archive itself (though we don't know it here).
+  // A robust way in 7-Zip SLT is that file entries have 'Attributes' or 'Size' 
+  // while the archive info has 'Type', 'Physical Size', etc.
+  return entries.filter(e => {
+    // Basic heuristic: Archive info block usually doesn't have a name/path that looks like an inner file
+    // and often has a very short list of properties compared to actual files in SLT.
+    // More importantly, file entries usually don't have 'Physical Size' at the entry level.
+    return !((e as any).physicalSize && (e as any).type);
+  });
 }
 
 function pushProcessedEntry(entries: SevenZipEntry[], data: Record<string, string>) {
@@ -135,6 +146,7 @@ function isPasswordError(stderr: string, stdout: string): boolean {
     combined.includes('wrong password') ||
     combined.includes('enter password') ||
     combined.includes('password:') ||
+    combined.includes('data error : wrong password') || // Specific 7z message
     (combined.includes('encrypted') && (combined.includes('password') || combined.includes('enter')))
   );
 }
@@ -152,7 +164,7 @@ export async function run7zBase(
   }
 
   const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
-  const proc = spawn(exe, args, { 
+  const proc = processManager.spawn(exe, args, { 
     windowsHide: true, 
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe']
@@ -201,6 +213,9 @@ export async function run7zBase(
           if (errorMatch) {
             logger.warn(`[7z Base] 7-Zip reported ${errorMatch[1]} errors in output (Code ${code}). Stdout: ${stdoutStr.slice(0, 500)}...`);
             if (stderr) logger.warn(`[7z Base] Stderr: ${stderr}`);
+            if (stderr.includes('Headers Error')) {
+              logger.warn(`[7z Base] Detected "Headers Error". This often means the archive index is corrupt, but 7-zip may still be able to list files by scanning.`);
+            }
           }
           if (warnMatch) {
             logger.warn(`[7z Base] 7-Zip reported ${warnMatch[1]} warnings in output (Code ${code}).`);
@@ -249,7 +264,9 @@ export async function listArchive(archivePath: string): Promise<SevenZipEntry[]>
     throw new Error(`Archive not found: ${archivePath}`);
   }
   const absPath = toLongPathIfNeeded(resolved);
-  const { stdout } = await run7z(['l', '-y', '-slt', '-sccUTF-8', absPath]);
+  // -sccUTF-8: Console output encoding
+  // -scsUTF-8: List file encoding (important for non-ASCII paths in args on Windows)
+  const { stdout } = await run7z(['l', '-y', '-slt', '-sccUTF-8', '-scsUTF-8', absPath]);
   return parse7zListOutput(stdout);
 }
 
@@ -267,7 +284,7 @@ export async function extractToStdout(archivePath: string, innerPath: string): P
   
   // Use 'e' (extract without paths) instead of 'x' for stdout extraction of a single file
   // to avoid potential issues with directory structures in patterns.
-  const args = ['e', '-so', '-y', '-bb0', '-sccUTF-8', '-i!' + innerPath, absPath];
+  const args = ['e', '-so', '-y', '-bb0', '-sccUTF-8', '-scsUTF-8', '-i!' + innerPath, absPath];
   logger.info(`[7z Extract Args]: ${args.join(' ')}`);
 
   try {
@@ -307,7 +324,7 @@ export async function extractToTemp(
 
   const destArg = destLong.endsWith('\\') ? destLong : destLong + '\\';
   // -i!path で厳密にファイルを指定
-  await run7z(['x', '-y', `-o${destArg}`, '-bb0', '-sccUTF-8', '-i!' + innerPath, absPath], {
+  await run7z(['x', '-y', `-o${destArg}`, '-bb0', '-sccUTF-8', '-scsUTF-8', '-i!' + innerPath, absPath], {
     timeout: 120_000,
   });
 
@@ -357,7 +374,7 @@ export async function extractMultipleToTemp(
     return '-i!' + p;
   });
 
-  const args = ['x', '-y', `-o${destArg}`, '-bb0', '-sccUTF-8', ...includeArgs, absPath];
+  const args = ['x', '-y', `-o${destArg}`, '-bb0', '-sccUTF-8', '-scsUTF-8', ...includeArgs, absPath];
   logger.info(`[7z Batch Extract Args]: ${args.join(' ')}`);
 
   await run7z(args, { timeout: Math.max(120_000, innerPaths.length * 10_000) });
@@ -407,16 +424,20 @@ export function extractToStream(archivePath: string, innerPath: string): Readabl
   const absPath = toLongPathIfNeeded(resolved);
 
   // -i!path で厳密にファイルを指定
-  const args = ['x', '-so', '-bb0', '-sccUTF-8', '-i!' + innerPath, absPath];
+  const args = ['x', '-so', '-bb0', '-sccUTF-8', '-scsUTF-8', '-i!' + innerPath, absPath];
   console.log('[7z Stream Command]: 7z', args.join(' '));
 
-  const proc = spawn(exe, args, {
+  const proc = processManager.spawn(exe, args, {
     windowsHide: true,
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
+    priority: ExternalProcessManager.Priorities.BELOW_NORMAL,
   });
 
   const stream = proc.stdout;
+  if (!stream) {
+    throw new Error('Failed to open stdout stream for 7-Zip process.');
+  }
 
   proc.stderr?.on('data', (chunk: Buffer) => {
     const msg = chunk.toString('utf8').toLowerCase();

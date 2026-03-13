@@ -94,7 +94,7 @@ export function streamFile(path: string, options?: { start?: number; end?: numbe
   const split = splitArchivePath(path);
   if (split) {
     if (isRarPath(path)) {
-      throw new Error('RAR streaming is not yet supported');
+      throw new Error('RAR動画の直接再生は現在サポートされていません。動画ファイルをダブルクリックして一時抽出してから再生してください宣。');
     }
     // Note: Archive streaming currently doesn't support ranges, 
     // it will return the full stream for the inner file.

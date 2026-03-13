@@ -1,4 +1,4 @@
-import { useEffect, memo } from 'react';
+import { useEffect, memo, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { useNavigationStore } from '../stores/navigationStore';
 import { useMediaStore } from '../stores/mediaStore';
@@ -6,20 +6,22 @@ import { useLayoutStore } from '../stores/layoutStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
 import { ImageView } from './ImageView';
-import { MediaAPI } from '../services/api';
 import { MediaVideo } from './MediaVideo';
 import { MediaAudio } from './MediaAudio';
 import styles from './MediaView.module.css';
 import { useTranslation } from '../i18n';
 import { useShallow } from 'zustand/react/shallow';
+import { useMediaCacheStore } from '../stores/mediaCacheStore';
+import { useMediaViewNavigation } from '../hooks/useMediaViewNavigation';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
 
 export const MediaView = memo(() => {
   const { t } = useTranslation();
   
   const { 
     mediaBlobUrl, mediaBlobUrls, mediaType, selectedPath, selectedPaths,
-    selectedEntry, goPrevPage, goNextPage, goNext, nextEntry,
-    setImageDimensions, loadMedia
+    selectedEntry, goPrevPage, goNextPage, goNext, nextEntry, prevEntry,
+    loadMedia
   } = useMediaStore(
     useShallow((s) => ({
       mediaBlobUrl: s.mediaBlobUrl,
@@ -32,7 +34,7 @@ export const MediaView = memo(() => {
       goNextPage: s.goNextPage,
       goNext: s.goNext,
       nextEntry: s.nextEntry,
-      setImageDimensions: s.setImageDimensions,
+      prevEntry: s.prevEntry,
       loadMedia: s.loadMedia,
     }))
   );
@@ -50,14 +52,14 @@ export const MediaView = memo(() => {
     }))
   );
 
-  // use goBack directly in onClick
-
-  const { viewMode, binding, autoThreshold, autoPlay } = useSettingsStore(
+  const { viewMode, binding, autoThreshold, autoPlay, scaleMode, autoSpreadCover } = useSettingsStore(
     useShallow((s) => ({
       viewMode: s.viewMode,
       binding: s.binding,
       autoThreshold: s.autoThreshold,
       autoPlay: s.autoPlay,
+      scaleMode: s.scaleMode,
+      autoSpreadCover: s.autoSpreadCover,
     }))
   );
 
@@ -78,63 +80,49 @@ export const MediaView = memo(() => {
       loadFromStorage: s.loadFromStorage,
     }))
   );
+  
+  const setImageDimensions = useMediaCacheStore((s) => s.setImageDimensions);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const { gestureDirection, gestureHandlers, handleToggleFullscreen } = useMediaViewNavigation({
+    goPrevPage, goNextPage, goNext, goBack, nextEntry, prevEntry,
+    toggleLoop, changePlaybackRate, resetPlaybackRate,
+    isPreviewFullscreen, error, isLoading, mediaType, containerRef
+  });
 
   useEffect(() => {
     loadFromStorage();
   }, [loadFromStorage]);
 
+  const currentDims = useMediaCacheStore(s => selectedPath ? s.imageDimensions[selectedPath] : null);
+  const nextPath = nextEntry()?.path;
+  const nextDims = useMediaCacheStore(s => nextPath ? s.imageDimensions[nextPath] : null);
+
   useEffect(() => {
-    // We only trigger re-load here for layout-driven changes (like spread mode) 
-    // that might require loading a second image.
-    // Basic navigation is already handled by coordinated store updates in viewerStore.ts.
-    if (mediaType === 'image' && selectedPath && (viewMode !== 'single')) {
+    // Re-sync media state when selection or view settings change.
+    // This ensures toolbar buttons (e.g. Spread/Single) update the UI immediately.
+    if (mediaType === 'image' && selectedPath) {
       loadMedia(selectedPath);
     }
-  }, [viewMode, binding, autoThreshold]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        goPrevPage();
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        goNextPage();
-      } else if (e.key === ' ' || e.key === 'Spacebar') {
-        e.preventDefault();
-        goNextPage();
-      } else if (e.key === 'Backspace') {
-        e.preventDefault();
-        goPrevPage();
-      } else if (e.key === 'l' || e.key === 'L') {
-        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-          e.preventDefault();
-          toggleLoop();
-        }
-      } else if (e.key === ']') {
-        e.preventDefault();
-        changePlaybackRate(0.1);
-      } else if (e.key === '[') {
-        e.preventDefault();
-        changePlaybackRate(-0.1);
-      } else if (e.key === '\\' || e.key === '¥') {
-        e.preventDefault();
-        resetPlaybackRate();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [goPrevPage, goNextPage, toggleLoop, changePlaybackRate, resetPlaybackRate]);
+  }, [selectedPath, viewMode, binding, autoThreshold, scaleMode, autoSpreadCover, currentDims?.w, nextDims?.w, loadMedia, mediaType]);
 
   const entry = selectedEntry();
+  const rawSrcs = mediaBlobUrls.length > 0 ? mediaBlobUrls : mediaBlobUrl ? [mediaBlobUrl] : [];
+  const imagePaths = selectedPaths.length > 0 ? selectedPaths : [selectedPath ?? ''];
+  const imageSrcs = rawSrcs.slice(0, imagePaths.length);
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    handleToggleFullscreen();
+  };
+
+  const handleMediaEnded = () => {
+    if (!loopEnabled && nextEntry()) goNext();
+  };
 
   if (!entry) {
-    return (
-      <div className={`${styles.mediaView} ${styles.empty}`}>
-        <div className={styles.placeholder}>{t('media.audioPlaceholder')}</div>
-      </div>
-    );
+    return <div className={`${styles.mediaView} ${styles.empty}`} />;
   }
 
   if (error) {
@@ -150,45 +138,35 @@ export const MediaView = memo(() => {
     );
   }
 
-  if (isLoading && mediaType !== 'image') {
+  if (isLoading && mediaType !== 'image' && autoPlay) {
     return (
       <div className={`${styles.mediaView} ${styles.loading}`}>
         <div className={styles.spinner} />
-        <div className={styles.loadingText}>{t('media.videoPreparing')}</div>
       </div>
     );
   }
-
-  const handleToggleFullscreen = () => {
-    const next = !isPreviewFullscreen;
-    MediaAPI.setPreviewFullscreen(next);
-  };
-
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    handleToggleFullscreen();
-  };
-
-  const handleMediaEnded = () => {
-    if (!loopEnabled && nextEntry()) goNext();
-  };
-
-  const rawSrcs = mediaBlobUrls.length > 0 ? mediaBlobUrls : mediaBlobUrl ? [mediaBlobUrl] : [];
-  const imagePaths = selectedPaths.length > 0 ? selectedPaths : [selectedPath ?? ''];
-  const imageSrcs = rawSrcs.slice(0, imagePaths.length);
 
   return (
     <div 
       className={`${styles.mediaView} ${!entry ? styles.empty : styles[`mediaView--${mediaType}`] || ''}`} 
       onDoubleClick={handleDoubleClick}
+      ref={containerRef}
+      {...gestureHandlers}
     >
+      {gestureDirection && (
+        <div className={styles.gestureOverlay}>
+          {gestureDirection === 'left' && <ChevronLeft size={64} />}
+          {gestureDirection === 'right' && <ChevronRight size={64} />}
+          {gestureDirection === 'up' && <ChevronUp size={64} />}
+          {gestureDirection === 'down' && <ChevronDown size={64} />}
+        </div>
+      )}
       {!entry || !mediaType ? (
-        <div className={styles.placeholder}>{t('media.audioPlaceholder')}</div>
+        <div className={styles.placeholder} />
       ) : mediaType === 'audio' ? (
         <MediaAudio
           key={mediaBlobUrl}
           src={mediaBlobUrl ?? ''}
-          name={entry.name}
           autoPlay={autoPlay}
           loop={loopEnabled}
           onEnded={handleMediaEnded}

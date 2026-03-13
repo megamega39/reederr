@@ -16,6 +16,8 @@ export interface SettingsState {
   wrapNavigation: boolean;
   slideshowInterval: number;
   autoPlay: boolean;
+  gridThumbnailSize: number;
+  hoverPreviewSize: number;
 
   setLanguage: (l: string) => void;
   setViewMode: (m: ViewMode) => void;
@@ -27,6 +29,8 @@ export interface SettingsState {
   setWrapNavigation: (v: boolean) => void;
   setSlideshowInterval: (v: number) => void;
   setAutoPlay: (v: boolean) => void;
+  setGridThumbnailSize: (v: number) => void;
+  setHoverPreviewSize: (v: number) => void;
 
   isHydrated: boolean;
   loadSettings: () => Promise<void>;
@@ -46,6 +50,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   wrapNavigation: true,
   slideshowInterval: 3,
   autoPlay: true,
+  gridThumbnailSize: 160,
+  hoverPreviewSize: 320,
   isHydrated: false,
 
   setLanguage: (l) => {
@@ -89,19 +95,32 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ autoPlay: v });
     get().saveSettings();
   },
+  setGridThumbnailSize: (v) => {
+    set({ gridThumbnailSize: Math.max(80, Math.min(500, v)) });
+    get().saveSettings();
+  },
+  setHoverPreviewSize: (v) => {
+    set({ hoverPreviewSize: Math.max(160, Math.min(500, v)) });
+    get().saveSettings();
+  },
 
   loadSettings: async () => {
     try {
-      const raw = await PersistenceAPI.loadStore();
-      const data = raw[SETTINGS_KEY] as Partial<SettingsState> | undefined;
-      if (data) {
-        set((s) => ({
-          ...s,
-          ...data,
-          isHydrated: true,
-        }));
-        // Rebuild menu with loaded language
-        if (data.language) MenuAPI.rebuildMenu(data.language);
+      const res = await PersistenceAPI.loadStore();
+      if (res.ok) {
+        const raw = res.value;
+        const data = raw[SETTINGS_KEY] as Partial<SettingsState> | undefined;
+        if (data) {
+          set((s) => ({
+            ...s,
+            ...data,
+            isHydrated: true,
+          }));
+          // Rebuild menu with loaded language
+          if (data.language) MenuAPI.rebuildMenu(data.language);
+        } else {
+          set({ isHydrated: true });
+        }
       } else {
         set({ isHydrated: true });
       }
@@ -111,8 +130,25 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   saveSettings: () => {
-    const { isHydrated, loadSettings, saveSettings, ...data } = get();
-    if (!isHydrated) return;
+    const state = get();
+    if (!state.isHydrated) return;
+    
+    // Pick ONLY data fields. Structured clone (IPC) fails if functions are included.
+    const data = {
+      language: state.language,
+      viewMode: state.viewMode,
+      binding: state.binding,
+      autoThreshold: state.autoThreshold,
+      scaleMode: state.scaleMode,
+      autoSpreadCover: state.autoSpreadCover,
+      recursiveMedia: state.recursiveMedia,
+      wrapNavigation: state.wrapNavigation,
+      slideshowInterval: state.slideshowInterval,
+      autoPlay: state.autoPlay,
+      gridThumbnailSize: state.gridThumbnailSize,
+      hoverPreviewSize: state.hoverPreviewSize,
+    };
+
     PersistenceAPI.saveStore({
       [SETTINGS_KEY]: data,
     });

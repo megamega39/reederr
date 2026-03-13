@@ -38,11 +38,9 @@ class ArchiveExtractor {
       }
       this.queue.get(archivePath)!.push(request);
 
-      if (this.timers.has(archivePath)) {
-        clearTimeout(this.timers.get(archivePath)!);
+      if (!this.timers.has(archivePath)) {
+        this.timers.set(archivePath, setTimeout(() => this.processQueue(archivePath), this.DEBOUNCE_MS));
       }
-
-      this.timers.set(archivePath, setTimeout(() => this.processQueue(archivePath), this.DEBOUNCE_MS));
     });
   }
 
@@ -82,9 +80,9 @@ class ArchiveExtractor {
       
       for (let i = 0; i < requests.length; i++) {
         const req = requests[i];
-        const path = extractedPaths[i];
+        const path = extractedPaths?.[i];
         try {
-          if (existsSync(path)) {
+          if (path && existsSync(path)) {
             tempManager.registerFile(`media:${req.archivePath}!${req.innerPath}`, path);
             const buf = await fs.readFile(path);
             req.resolve(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);

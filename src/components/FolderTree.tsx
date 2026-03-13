@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTreeStore } from '../stores/treeStore';
@@ -12,6 +12,7 @@ import { FolderContextMenu } from './FolderContextMenu';
 import { FileSystemAPI } from '../services/api';
 import { ChevronRight, ChevronDown, Star } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { AnyPath } from '../types/paths';
 
 interface FlatNode {
   id: string;
@@ -73,9 +74,9 @@ export function FolderTree() {
       if (!children) return;
       
       for (const child of children) {
-        const normPath = child.path; // Already normalized in store
+        const normPath = child.path; 
         const nodeKey = `${prefix}-${normPath}`;
-        const isExpanded = expandedPaths[nodeKey];
+        const isExpanded = (expandedPaths as any)[nodeKey];
         
         nodes.push({
           id: nodeKey,
@@ -120,7 +121,7 @@ export function FolderTree() {
           prefix: 'favorite'
         });
 
-        if (expandedPaths[nodeKey]) {
+        if (expandedPaths[nodeKey as AnyPath]) {
           addNodes(normPath, 2, 'favorite');
         }
       });
@@ -145,19 +146,19 @@ export function FolderTree() {
         prefix
       });
 
-      if (expandedPaths[nodeKey]) {
+      if ((expandedPaths as any)[nodeKey]) {
         addNodes(normPath, 1, prefix);
       }
     });
 
     return nodes;
-  }, [treeRoots, treeChildren, expandedPaths, favorites, favExpanded]);
+  }, [treeRoots, treeChildren, expandedPaths, favorites, favExpanded, t]);
 
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: flatNodes.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 18,
+    estimateSize: () => 22,
     overscan: 20
   });
 
@@ -205,14 +206,14 @@ export function FolderTree() {
   );
   const lastScrolledPath = useRef<string | null>(null);
 
-  // Scroll current path into view when it changes, when list grows, or when restoration state changes
-  useEffect(() => {
+  // Scroll current path into view when it changes, when list grows, or when restoration state changes  // Auto-scroll to active item
+  useLayoutEffect(() => {
     if (!currentPath || !isHydrated) return;
-    
-    // Normalize consistently for comparison
     const normCurrent = normalizePath(currentPath).toLowerCase();
     
-    // Smart Scroll: Find the exact index, or the closest visible ancestor
+    // We already scrolled to this path in current layout cycle
+    if (lastScrolledPath.current === normCurrent) return;
+
     const findBestIndex = () => {
       // 1. Try exact match
       const exactIdx = flatNodes.findIndex(n => normalizePath(n.path).toLowerCase() === normCurrent);
@@ -233,8 +234,34 @@ export function FolderTree() {
     
     if (targetIdx >= 0) {
       const performScroll = () => {
-        if (!parentRef.current) return;
-        virtualizer.scrollToIndex(targetIdx, { align: 'center', behavior: 'auto' });
+        const container = parentRef.current;
+        if (!container) return;
+        
+        const scrollOffset = container.scrollTop;
+        const containerSize = container.offsetHeight;
+        if (containerSize <= 0) return;
+
+        const ROW_HEIGHT = 22;
+        const itemStart = targetIdx * ROW_HEIGHT;
+        const itemEnd = (targetIdx + 1) * ROW_HEIGHT;
+        
+        const MARGIN = ROW_HEIGHT; 
+        let targetScroll = scrollOffset;
+
+        if (itemEnd > scrollOffset + containerSize - MARGIN) {
+          // Hits bottom margin: align so the NEXT row is at the bottom
+          const targetItemEnd = (targetIdx + 2) * ROW_HEIGHT;
+          targetScroll = Math.max(scrollOffset, targetItemEnd - containerSize);
+        } else if (itemStart < scrollOffset + MARGIN) {
+          // Hits top margin: align so the PREVIOUS row is at the top
+          const targetItemStart = (targetIdx - 1) * ROW_HEIGHT;
+          targetScroll = Math.min(scrollOffset, targetItemStart);
+        }
+
+        if (targetScroll !== scrollOffset) {
+          container.scrollTop = targetScroll;
+          virtualizer.scrollToOffset(targetScroll);
+        }
         
         const isExact = normalizePath(flatNodes[targetIdx].path).toLowerCase() === normCurrent;
         if (isExact) {
@@ -242,20 +269,12 @@ export function FolderTree() {
         }
       };
 
-      // During restoration, we perform multiple attempts with a delay
       if (isRestoring) {
         const timer = setTimeout(performScroll, 500); 
         return () => clearTimeout(timer);
       } 
       
-      // If we just finished restoring or if path changed, perform a clean final scroll
-      if (lastScrolledPath.current !== normCurrent) {
-        const timer = setTimeout(performScroll, 200);
-        return () => clearTimeout(timer);
-      } else {
-        // Immediate scroll for normal navigation
-        performScroll();
-      }
+      performScroll();
     }
   }, [currentPath, virtualizer, flatNodes.length, isHydrated, isRestoring]);
 
@@ -265,7 +284,7 @@ export function FolderTree() {
         <div className="folder-tree-header">{t('tree.header')}</div>
         <div className="folder-tree-content" ref={parentRef}>
           <div className="folder-tree-empty">
-            {error ? `⚠ ${error}` : t('common.loading')}
+            {error ? `⚠ ${error}` : '...'}
           </div>
         </div>
       </div>
@@ -277,30 +296,32 @@ export function FolderTree() {
       <div className="folder-tree-header">{t('tree.header')}</div>
       <div className="folder-tree-content" ref={parentRef} style={{ height: '100%', overflow: 'auto' }}>
         <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
-          {virtualizer.getVirtualItems().map((vItem) => {
-            const node = flatNodes[vItem.index];
-            const isSelected = currentPath && normalizePath(currentPath) === normalizePath(node.path);
-            
-            // Check if this node is the archive root for the current path
+          {(() => {
+            const normCurrent = currentPath ? normalizePath(currentPath) : null;
             const archiveRoot = currentPath ? resolveArchivePath(currentPath) : null;
-            const isActiveArchive = node.isArchive && archiveRoot && normalizePath(node.path) === normalizePath(archiveRoot);
 
-            return (
-              <TreeItemRow
-                key={vItem.key}
-                node={node}
-                virtualItem={vItem}
-                isSelected={!!isSelected}
-                isActiveArchive={!!isActiveArchive}
-                isExpanded={!!(expandedPaths[node.id] || (node.isFavoriteHeader && favExpanded))}
-                onToggleFav={() => setFavExpanded(!favExpanded)}
-                // Optimization: Pass necessary state from parent to avoid per-row store subscriptions
-                loaded={!!treeChildren[normalizePath(node.isArchive ? node.path + '!' : node.path)]}
-                isLoading={!!loadingPaths[normalizePath(node.isArchive ? node.path + '!' : node.path)]}
-                hasChildren={node.isVirtual ? true : (treeChildren[normalizePath(node.isArchive ? node.path + '!' : node.path)]?.length ?? 0) > 0}
-              />
-            );
-          })}
+            return virtualizer.getVirtualItems().map((vItem) => {
+              const node = flatNodes[vItem.index];
+              const isSelected = normCurrent === node.path;
+              const isActiveArchive = node.isArchive && archiveRoot === node.path;
+
+              return (
+                <TreeItemRow
+                  key={vItem.key}
+                  node={node}
+                  virtualItem={vItem}
+                  isSelected={!!isSelected}
+                  isActiveArchive={!!isActiveArchive}
+                  isExpanded={!!((expandedPaths as any)[node.id] || (node.isFavoriteHeader && favExpanded))}
+                  onToggleFav={() => setFavExpanded(!favExpanded)}
+                  // Optimization: Pass necessary state from parent to avoid per-row store subscriptions
+                  loaded={!!treeChildren[node.path as AnyPath]}
+                  isLoading={!!loadingPaths[node.path as AnyPath]}
+                  hasChildren={node.isVirtual ? true : (treeChildren[node.path as AnyPath]?.length ?? 0) > 0}
+                />
+              );
+            });
+          })()}
         </div>
       </div>
     </div>
@@ -407,13 +428,13 @@ const TreeItemRow = React.memo(function TreeItemRow({
       ? await FileSystemAPI.renameFolder(node.path, trimmed)
       : await FileSystemAPI.renameFile(node.path, trimmed);
     
-    if (!result?.ok) {
-      alert(result?.error ?? '名前の変更に失敗しました');
+    if (!result.ok) {
+      alert(result.error ?? '名前の変更に失敗しました');
       setEditingNodeId(null);
       return;
     }
     
-    const parentPath = getParentPath(node.path);
+    const parentPath = getParentPath(node.path as AnyPath);
     if (parentPath) {
       const tree = useTreeStore.getState();
       tree.refreshTreeChildren(parentPath);
@@ -427,7 +448,7 @@ const TreeItemRow = React.memo(function TreeItemRow({
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
       if (e.key === 'F2' && isSelected && !node.path.includes('!')) {
         e.preventDefault();
-        setEditingNodeId(node.path);
+        setEditingNodeId(node.path as AnyPath);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -447,23 +468,24 @@ const TreeItemRow = React.memo(function TreeItemRow({
     >
       <div
         className={`tree-item ${isSelected ? 'selected' : ''} ${isActiveArchive ? 'active-archive' : ''}`}
-        style={{ paddingLeft: node.depth * 12 + 8 }}
+        style={{ paddingLeft: node.depth * 18 + 8 }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        onMouseEnter={(e) => setHoveredItem(node.path, { x: e.clientX, y: e.clientY })}
+        onMouseEnter={(e) => setHoveredItem(node.path as AnyPath, { x: e.clientX, y: e.clientY })}
         onMouseLeave={() => setHoveredItem(null)}
       >
         <span
           className={`tree-expand ${isExpandable ? '' : 'empty'}`}
           onClick={isExpandable ? handleExpand : undefined}
           role="button"
+          style={{ marginRight: 6 }}
         >
           {isExpandable ? (isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : ' '}
         </span>
         {node.isFavoriteHeader ? (
-          <Star size={14} style={{ marginRight: 4, color: '#f1c40f' }} fill="#f1c40f" />
+          <Star size={14} style={{ marginRight: 6, color: '#f1c40f' }} fill="#f1c40f" />
         ) : (
-          <FileIcon path={node.path === 'pc' ? 'pc' : (node.path === 'network' ? 'network' : node.path)} isDirectory={node.isDirectory} size={16} />
+          <FileIcon path={node.path === 'pc' ? 'pc' : (node.path === 'network' ? 'network' : node.path)} isDirectory={node.isDirectory} size={16} style={{ marginRight: 6 }} />
         )}
         
         {editingNodeId === node.path ? (
@@ -488,8 +510,8 @@ const TreeItemRow = React.memo(function TreeItemRow({
         <FolderContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          path={node.path}
-          parentPath={getParentPath(node.path)}
+          path={node.path as AnyPath}
+          parentPath={getParentPath(node.path as AnyPath)}
           isVirtual={node.path.includes('!')}
           onExpand={async () => {
              if (!loaded) await ensureTreeChildren(node.path);

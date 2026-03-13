@@ -28,9 +28,12 @@ export function useFileSorting(entries: DirectoryEntry[]) {
       return;
     }
 
+    // Capture the current entries to avoid stale closure issues in the worker
+    const currentEntries = entries;
+
     // Send task to worker
     workerRef.current.postMessage({
-      entries,
+      entries: currentEntries,
       sortBy,
       sortOrder,
       filter: fileListFilter

@@ -2,12 +2,13 @@ import { create } from 'zustand';
 import { FileSystemAPI } from '../services/api';
 import { DirectoryEntry, HistoryEntry } from '../types';
 import { normalizePath, getParentPath, isArchiveOpened, ensureOpenedPath } from './viewerStore.utils';
+import { AnyPath, toAnyPath } from '../types/paths';
 import { useAppStore } from './appStore';
 import { useSettingsStore } from './settingsStore';
 import { useTreeStore } from './treeStore';
 
 export interface NavigationState {
-  currentPath: string | null;
+  currentPath: AnyPath | null;
   entries: DirectoryEntry[];
   history: HistoryEntry[];
   historyIndex: number;
@@ -15,8 +16,8 @@ export interface NavigationState {
   error: string | null;
   currentLoadId: number;
 
-  loadDirectory: (path: string, opts?: { pushHistory?: boolean; skipSelect?: boolean; selectedPath?: string }) => Promise<void>;
-  setCurrentPath: (path: string | null) => void;
+  loadDirectory: (path: AnyPath | string, opts?: { pushHistory?: boolean; skipSelect?: boolean; selectedPath?: AnyPath }) => Promise<void>;
+  setCurrentPath: (path: AnyPath | null) => void;
   goBack: () => void;
   goForward: () => void;
   goUp: () => void;
@@ -69,10 +70,11 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
   canGoUp: () => {
     const { currentPath } = get();
     if (!currentPath) return false;
-    if (currentPath === 'pc' || currentPath === 'network') return false;
-    if (currentPath.includes('!')) return true; // Inside archive
+    const str = currentPath as string;
+    if (str === 'pc' || str === 'network') return false;
+    if (str.includes('!')) return true; // Inside archive
     // Simple check for root like C: or / (Linux)
-    return currentPath.split(/[/\\]/).filter(Boolean).length > 1;
+    return str.split(/[/\\]/).filter(Boolean).length > 1;
   },
 
   setCurrentPath: (path) => set({ currentPath: path }),
@@ -98,14 +100,15 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     if (!currentPath) return;
     
     if (currentPath.includes('!')) {
-      const archiveRoot = currentPath.slice(0, currentPath.indexOf('!'));
-      const innerPath = currentPath.slice(currentPath.indexOf('!') + 1).replace(/\/+$/, '');
-      if (innerPath === '') {
+      const str = currentPath as string;
+      const archiveRoot = toAnyPath(str.slice(0, str.indexOf('!')));
+      const innerPath = toAnyPath(str.slice(str.indexOf('!') + 1).replace(/\/+$/, ''));
+      if ((innerPath as string) === '') {
         const parent = getParentPath(archiveRoot);
         if (parent) loadDirectory(parent);
       } else {
         const parentInner = getParentPath(innerPath);
-        loadDirectory(archiveRoot + '!' + (parentInner ? parentInner : ''));
+        loadDirectory(toAnyPath(archiveRoot + '!' + (parentInner ? parentInner : '')));
       }
     } else {
       const parent = getParentPath(currentPath);
@@ -142,13 +145,14 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       const { history, historyIndex } = get();
       const newHistory = history.slice(0, historyIndex + 1);
       let type: 'folder' | 'archive' | 'pc' | 'network' | 'other' = 'folder';
-      if (normPath === 'pc') type = 'pc';
-      else if (normPath === 'network') type = 'network';
+      const strNorm = normPath as string;
+      if (strNorm === 'pc') type = 'pc';
+      else if (strNorm === 'network') type = 'network';
       else if (isArchiveOpened(normPath)) type = 'archive';
       
-      const name = normPath === 'pc' ? 'PC' : 
-                   normPath === 'network' ? 'Network' :
-                   (normPath.split(/[/\\]/).pop() || normPath).replace('!', '');
+      const name = strNorm === 'pc' ? 'PC' : 
+                   strNorm === 'network' ? 'Network' :
+                   (strNorm.split(/[/\\]/).pop() || strNorm).replace('!', '');
       newHistory.push({ path: normPath, name, type });
       set({ history: newHistory, historyIndex: newHistory.length - 1 });
     }
@@ -171,7 +175,11 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
         return;
       }
 
-      const entries = Array.isArray(result.value) ? result.value : [];
+      const rawEntries = Array.isArray(result.value) ? result.value : [];
+      const entries = rawEntries.map(e => ({
+        ...e,
+        path: normalizePath(e.path) as AnyPath
+      }));
       set({ entries, isLoading: false, error: null });
     } catch (err) {
       if (get().currentLoadId !== loadId) return;

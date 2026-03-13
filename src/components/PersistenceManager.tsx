@@ -75,7 +75,7 @@ export function PersistenceManager() {
   const {
     leftPaneWidth, folderPaneHeight, fileListSortBy, fileListSortOrder, fileListColumnOrder,
     fileListColName, fileListColSize, fileListColType, fileListColMtime,
-    activeTreePrefix
+    activeTreePrefix, fileListViewMode, showHoverPreview
   } = useLayoutStore();
 
   useEffect(() => {
@@ -87,7 +87,7 @@ export function PersistenceManager() {
   }, [
     layoutHydrated, layoutRestoring, leftPaneWidth, folderPaneHeight, fileListSortBy, fileListSortOrder,
     fileListColumnOrder, fileListColName, fileListColSize, fileListColType, fileListColMtime,
-    activeTreePrefix
+    activeTreePrefix, fileListViewMode, showHoverPreview
   ]);
 
   // Settings save debouncing
@@ -109,14 +109,14 @@ export function PersistenceManager() {
   ]);
 
   // Viewer save debouncing 
-  const { currentPath, selectedPath, history, historyIndex } = useNavigationStore(
+  const { currentPath, history, historyIndex } = useNavigationStore(
     useShallow((s) => ({
       currentPath: s.currentPath,
-      selectedPath: useMediaStore.getState().selectedPath,
       history: s.history,
       historyIndex: s.historyIndex,
     }))
   );
+  const selectedPath = useMediaStore((s) => s.selectedPath);
   const favorites = useFavoriteStore((s) => s.favorites);
 
   useEffect(() => {

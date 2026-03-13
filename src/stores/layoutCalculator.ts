@@ -25,24 +25,34 @@ export function getVisibleEntries(
     return [curEntry];
   }
 
-  const { viewMode, binding, autoSpreadCover, autoThreshold } = options;
-  let isDouble = false;
+  const { viewMode, binding, autoSpreadCover } = options;
   const hasNext = idx + 1 < sorted.length;
+  
+  const curDims = imageDimensions[sorted[idx].path];
+  // If we don't know dimensions, assume NOT landscape (to avoid single-page flickering for portraits)
+  const isCurLandscape = curDims && (curDims.w > curDims.h); 
+  
+  let isDouble = false;
 
   if (viewMode === 'spread') {
-    isDouble = hasNext;
+    if (idx === 0 && autoSpreadCover) {
+      isDouble = false;
+    } else if (hasNext) {
+      isDouble = true;
+    }
   } else if (viewMode === 'auto') {
     if (idx === 0 && autoSpreadCover) {
       isDouble = false;
-    } else {
-      const curDims = imageDimensions[sorted[idx].path];
-      const isCurLandscape = curDims && (curDims.w > curDims.h * (autoThreshold || 1.35));
-      
-      if (isCurLandscape) {
+    } else if (isCurLandscape) {
+      // Auto mode: Landscape images always take full width
+      isDouble = false;
+    } else if (hasNext) {
+      const nextEntry = sorted[idx + 1];
+      if (isVideoPath(nextEntry.path) || isAudioPath(nextEntry.path)) {
         isDouble = false;
-      } else if (hasNext) {
-        const nextDims = imageDimensions[sorted[idx + 1].path];
-        const isNextLandscape = nextDims && (nextDims.w > nextDims.h * (autoThreshold || 1.35));
+      } else {
+        const nextDims = imageDimensions[nextEntry.path];
+        const isNextLandscape = nextDims && (nextDims.w > nextDims.h);
         isDouble = !isNextLandscape;
       }
     }
@@ -50,12 +60,7 @@ export function getVisibleEntries(
 
   const res = [sorted[idx]];
   if (isDouble && hasNext) {
-    const nextEntry = sorted[idx + 1];
-    if (isVideoPath(nextEntry.path) || isAudioPath(nextEntry.path)) {
-      isDouble = false;
-    } else {
-      res.push(nextEntry);
-    }
+    res.push(sorted[idx + 1]);
   }
 
   if (binding === 'rtl' && res.length > 1) {

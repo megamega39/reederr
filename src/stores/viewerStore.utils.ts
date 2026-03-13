@@ -1,4 +1,5 @@
 import { DirectoryEntry } from '../types';
+import { AnyPath, toAnyPath, toPhysicalPath, toVirtualPath, isVirtualPath } from '../types/paths';
 import { useLayoutStore } from './layoutStore';
 
 export const VIDEO_EXT = ['.mp4', '.webm', '.avi', '.mkv', '.mov', '.wmv', '.m4v'];
@@ -36,13 +37,13 @@ export function isImagePath(path: string): boolean {
 export const ARCHIVE_EXTS = ['.zip', '.rar', '.cbz', '.cbr', '.7z', '.7zip', '.tar', '.gz', '.bz2', '.xz', '.iso', '.lzh', '.lha', '.lzma'];
 export const ARCHIVE_OPENED_REGEX = /\.(zip|rar|cbz|cbr|7z|7zip|tar|gz|bz2|xz|iso|lzh|lha|lzma)!/i;
 
-export function isArchivePath(path: string): boolean {
+export function isArchivePath(path: AnyPath): boolean {
   const norm = normalizePath(path);
   const lower = norm.toLowerCase();
   return ARCHIVE_EXTS.some((ext) => lower.endsWith(ext));
 }
 
-export function isArchiveOpened(path: string): boolean {
+export function isArchiveOpened(path: AnyPath): boolean {
   return ARCHIVE_OPENED_REGEX.test(path);
 }
 
@@ -50,20 +51,20 @@ export function isArchiveOpened(path: string): boolean {
  * Returns the archive root part of a virtual path (e.g., "a.zip!b/c" -> "a.zip")
  * Robust against exclamation marks in filenames using ARCHIVE_OPENED_REGEX.
  */
-export function resolveArchivePath(path: string): string | null {
+export function resolveArchivePath(path: AnyPath): AnyPath | null {
   const norm = normalizePath(path);
   const match = norm.match(ARCHIVE_OPENED_REGEX);
   if (match) {
     const endIdx = match.index! + match[0].length - 1; // index of the '!' after extension
-    return norm.slice(0, endIdx);
+    return toAnyPath(norm.slice(0, endIdx));
   }
-  return isArchivePath(norm) ? norm : null;
+  return isArchivePath(path) ? path : null;
 }
 
 /**
  * Returns the inner part of an archive path (e.g., "a.zip!b/c" -> "b/c")
  */
-export function getInnerPath(path: string): string {
+export function getInnerPath(path: AnyPath): string {
   const norm = normalizePath(path);
   const match = norm.match(ARCHIVE_OPENED_REGEX);
   if (!match) return '';
@@ -75,24 +76,24 @@ export function getInnerPath(path: string): string {
  * Normalizes a path for consistent comparison.
  * Ensures forward slashes and removes trailing slashes/exclamations.
  */
-export function normalizePath(path: string | null | undefined): string {
-  if (typeof path !== 'string') return '';
+export function normalizePath(path: string | AnyPath | null | undefined): AnyPath {
+  if (typeof path !== 'string') return toAnyPath('');
   // Convert backslashes to forward slashes, squash multiple slashes, remove trailing slash/exclamation
   let res = path.replace(/\\/g, '/').replace(/\/+/g, '/');
   if (res.length > 1 && res.endsWith('/')) res = res.slice(0, -1);
   if (res.endsWith('!')) res = res.slice(0, -1);
-  return res;
+  return toAnyPath(res);
 }
 
 /**
  * Ensures an archive path has the trailing '!' if it's meant to be opened.
  */
-export function ensureOpenedPath(path: string): string {
+export function ensureOpenedPath(path: AnyPath): AnyPath {
   const norm = normalizePath(path);
   if (isArchivePath(norm) && !ARCHIVE_OPENED_REGEX.test(path)) {
-    return norm + '!';
+    return toAnyPath(norm + '!');
   }
-  return path.includes('!') ? path : norm; // Preserve existing markers if present but not matching regex perfectly
+  return path.includes('!') ? path : norm;
 }
 
 export function isJunkFile(name: string): boolean {
@@ -101,7 +102,7 @@ export function isJunkFile(name: string): boolean {
   return false;
 }
 
-export function getParentPath(p: string | null | undefined): string | null {
+export function getParentPath(p: AnyPath | null | undefined): AnyPath | null {
   const normalized = normalizePath(p);
   if (!normalized || normalized === 'pc' || normalized === 'network') return null;
   
@@ -110,22 +111,22 @@ export function getParentPath(p: string | null | undefined): string | null {
   if (archiveRoot && normalized.length > archiveRoot.length + 1) {
     const inner = getInnerPath(normalized);
     if (inner.includes('/')) {
-      return archiveRoot + '!' + inner.slice(0, inner.lastIndexOf('/'));
+      return toAnyPath(archiveRoot + '!' + inner.slice(0, inner.lastIndexOf('/')));
     }
-    return archiveRoot + '!';
+    return toAnyPath(archiveRoot + '!');
   }
   
   // If we are at the root of an archive "xxx.zip!", the parent is the containing directory
-  if (archiveRoot && (normalized === archiveRoot || normalized === archiveRoot + '!')) {
-    const lastSlash = archiveRoot.lastIndexOf('/');
-    if (lastSlash < 0) return 'pc'; // Root-level archive parent is PC
+  if (archiveRoot && (normalized === archiveRoot || normalized === toAnyPath(archiveRoot + '!'))) {
+    const lastSlash = (archiveRoot as string).lastIndexOf('/');
+    if (lastSlash < 0) return toAnyPath('pc'); // Root-level archive parent is PC
     return normalizePath(archiveRoot.slice(0, lastSlash));
   }
 
-  const lastSlash = normalized.lastIndexOf('/');
+  const lastSlash = (normalized as string).lastIndexOf('/');
   if (lastSlash < 0) {
     // Top-level folders/drives (e.g., "C:") parent is PC
-    return 'pc';
+    return toAnyPath('pc');
   }
   return normalizePath(normalized.slice(0, lastSlash));
 }

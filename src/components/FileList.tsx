@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect, useRef, Fragment, memo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, memo, Fragment } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../stores/appStore';
 import { useNavigationStore } from '../stores/navigationStore';
@@ -40,10 +40,11 @@ export function FileList() {
     }))
   );
 
-  const { selectedPath, selectedPaths, setSelectedPath, setSelectedPaths, loadMedia } = useMediaStore(
+  const { selectedPath, selectedPaths, selectedPathsSet, setSelectedPath, setSelectedPaths, loadMedia } = useMediaStore(
     useShallow((s) => ({
       selectedPath: s.selectedPath,
       selectedPaths: s.selectedPaths,
+      selectedPathsSet: s.selectedPathsSet,
       setSelectedPath: s.setSelectedPath,
       setSelectedPaths: s.setSelectedPaths,
       loadMedia: s.loadMedia,
@@ -101,30 +102,54 @@ export function FileList() {
     return () => clearTimeout(timer);
   }, [isLoading]);
 
-  // Auto-scroll to selected items (ensures the primary highlighted item is visible)
-  useEffect(() => {
-    if (!selectedPath) return;
+  // Auto-scroll to selected items (Smart "Ensure Visible" logic)
+  useLayoutEffect(() => {
+    const container = parentRef.current;
+    if (!selectedPath || !container || viewMode !== 'list') return;
     
     const idx = sortedEntries.findIndex(e => normalizePath(e.path) === normalizePath(selectedPath));
     if (idx < 0) return;
-    
-    // Proactive "Look-ahead" scrolling: 
-    // If moving Down, ensure several items below are visible.
-    // If moving Up, ensure several items above are visible.
-    const SCROLL_MARGIN = 4;
-    if (lastSelectedIndex.current !== -1 && lastSelectedIndex.current !== idx) {
-      const isMovingDown = idx > lastSelectedIndex.current;
-      const targetIdx = isMovingDown 
-        ? Math.min(idx + SCROLL_MARGIN, sortedEntries.length - 1)
-        : Math.max(idx - SCROLL_MARGIN, 0);
-      
-      virtualizer.scrollToIndex(targetIdx, { align: 'auto' });
-    } else {
-      virtualizer.scrollToIndex(idx, { align: 'auto' });
+
+    const numSelected = selectedPaths.length > 0 ? selectedPaths.length : 1;
+    const firstIdx = idx;
+    const lastIdx = idx + numSelected - 1;
+
+    const scrollOffset = container.scrollTop;
+    const containerSize = container.offsetHeight;
+    if (containerSize <= 0) return;
+
+    const ROW_HEIGHT = 18; 
+    const PADDING = 2;
+    const selectionStart = firstIdx * ROW_HEIGHT + PADDING;
+    const selectionEnd = (lastIdx + 1) * ROW_HEIGHT + PADDING;
+
+    // Buffer: 1 row normally, but 2 rows if in spread mode to ensure the "next pair" is visible
+    const isSpread = numSelected > 1;
+    const MARGIN = isSpread ? ROW_HEIGHT * 2 : ROW_HEIGHT; 
+
+    // Calculate desired scroll offset
+    let targetScroll = scrollOffset;
+
+    if (selectionEnd > scrollOffset + containerSize - MARGIN) {
+      // Hits bottom margin: align so the NEXT row(s) are visible
+      const targetItemEnd = (lastIdx + (isSpread ? 3 : 2)) * ROW_HEIGHT + PADDING;
+      targetScroll = Math.max(scrollOffset, targetItemEnd - containerSize);
+    } else if (selectionStart < scrollOffset + MARGIN) {
+      // Hits top margin: align so the PREVIOUS row(s) are visible
+      const targetItemStart = (firstIdx - (isSpread ? 2 : 1)) * ROW_HEIGHT + PADDING;
+      targetScroll = Math.min(scrollOffset, targetItemStart);
+    }
+
+    if (targetScroll !== scrollOffset) {
+      // Direct DOM manipulation is safer for avoiding jitter
+      container.scrollTop = targetScroll;
+      // Tell virtualizer to sync its state IMMEDIATELY
+      virtualizer.scrollToOffset(targetScroll);
+      virtualizer.calculateRange(); // Force re-calculation of visible range to avoid blank frames
     }
     
     lastSelectedIndex.current = idx;
-  }, [selectedPath, sortedEntries, virtualizer]);
+  }, [selectedPath, selectedPaths.length, sortedEntries, virtualizer, viewMode]);
 
   const colWidthMap: Record<FileListColumnId, number> = useMemo(
     () => ({ name: colName, size: colSize, type: colType, mtime: colMtime }),
@@ -173,7 +198,7 @@ export function FileList() {
     [setColumnOrder]
   );
 
-  const handleSelect = (entry: DirectoryEntry | null | undefined, e: React.MouseEvent) => {
+  const handleSelect = useCallback((entry: DirectoryEntry | null | undefined, e: React.MouseEvent) => {
     if (!entry?.path) return;
     if (entry.isArchive) {
       loadDirectory(entry.path);
@@ -194,7 +219,7 @@ export function FileList() {
       setSelectedPath(entry.path);
     }
     loadMedia(entry.path);
-  };
+  }, [selectedPaths, setSelectedPath, setSelectedPaths, loadMedia, loadDirectory]);
 
   const handleDoubleClick = (entry: DirectoryEntry | null | undefined) => {
     if (!entry) return;
@@ -220,9 +245,9 @@ export function FileList() {
         ? await FileSystemAPI.renameFolder(oldPath, newName)
         : await FileSystemAPI.renameFile(oldPath, newName);
       
-      if (result?.ok) {
+      if (result.ok) {
         window.dispatchEvent(new CustomEvent(isDir ? 'folder-renamed' : 'file-renamed', { detail: { path: oldPath, newName } }));
-      } else if (result?.error) {
+      } else {
         alert(result.error);
       }
     } catch (err) {
@@ -371,7 +396,7 @@ export function FileList() {
           </div>
 
           <div className={styles.content} ref={parentRef}>
-            {showLoading && <div className={styles.loadingOverlay}>{t('common.loading')}...</div>}
+            {showLoading && <div className={styles.loadingOverlay}><div className={styles.spinner} /></div>}
             {error && (
               <div className={styles.errorOverlay} role="alert">
                 <div className={styles.errorContent}>
@@ -405,7 +430,7 @@ export function FileList() {
                     key={virtualItem.key}
                     virtualItem={virtualItem}
                     entry={e}
-                    isSelected={selectedPaths.some(p => normalizePath(p) === normalizePath(e.path))}
+                    isSelected={selectedPathsSet.has(e.path)} 
                     editingPath={editingPath}
                     columnOrder={columnOrder}
                     colWidthMap={colWidthMap}
@@ -430,11 +455,10 @@ export function FileList() {
       {viewMode === 'grid' && (
         <FileGridView 
           entries={sortedEntries}
-          selectedPath={selectedPath}
           selectedPaths={selectedPaths}
-          onSelect={handleSelect}
-          onDoubleClick={handleDoubleClick}
-          onContextMenu={handleContextMenu}
+          onSelect={handleSelect as any}
+          onDoubleClick={handleDoubleClick as any}
+          onContextMenu={handleContextMenu as any}
         />
       )}
 
@@ -504,6 +528,7 @@ const FileListItem = memo(({
   onRenameSave: (oldPath: string, newName: string, isDir: boolean) => void;
   onSetEditingPath: (path: string | null) => void;
   onHover: (path: string | null, pos?: { x: number; y: number }) => void;
+  isVirtual: boolean;
 }) => {
   const { t } = useTranslation();
   

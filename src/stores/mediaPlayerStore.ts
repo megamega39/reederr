@@ -68,15 +68,20 @@ export const useMediaPlayerStore = create<MediaPlayerState>((set, get) => ({
 
   loadFromStorage: async () => {
     try {
-      const raw = await PersistenceAPI.loadStore();
-      const state = raw[MEDIA_PLAYER_KEY] as Partial<MediaPlayerSettings> | undefined;
-      if (state) {
-        set((s) => ({
-          loopEnabled: typeof state.loopEnabled === 'boolean' ? state.loopEnabled : s.loopEnabled,
-          playbackRate: typeof state.playbackRate === 'number' ? clampRate(state.playbackRate) : s.playbackRate,
-          preservesPitch: typeof state.preservesPitch === 'boolean' ? state.preservesPitch : s.preservesPitch,
-          isHydrated: true,
-        }));
+      const res = await PersistenceAPI.loadStore();
+      if (res.ok) {
+        const raw = res.value;
+        const state = raw[MEDIA_PLAYER_KEY] as Partial<MediaPlayerSettings> | undefined;
+        if (state) {
+          set((s) => ({
+            loopEnabled: typeof state.loopEnabled === 'boolean' ? state.loopEnabled : s.loopEnabled,
+            playbackRate: typeof state.playbackRate === 'number' ? clampRate(state.playbackRate) : s.playbackRate,
+            preservesPitch: typeof state.preservesPitch === 'boolean' ? state.preservesPitch : s.preservesPitch,
+            isHydrated: true,
+          }));
+        } else {
+          set({ isHydrated: true });
+        }
       } else {
         set({ isHydrated: true });
       }

@@ -24,6 +24,16 @@ export function HelpModal({ onClose }: Props) {
         </ul>
       </section>
       <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>{t('help.basics.gesturesTitle')}</h3>
+        <p className={styles.description}>{t('help.basics.gesturesDesc')}</p>
+        <ul className={styles.list}>
+          <li>{t('help.basics.gestureLeft')}</li>
+          <li>{t('help.basics.gestureRight')}</li>
+          <li>{t('help.basics.gestureUp')}</li>
+          <li>{t('help.basics.gestureDown')}</li>
+        </ul>
+      </section>
+      <section className={styles.section}>
         <h3 className={styles.sectionTitle}>{t('help.basics.navTitle')}</h3>
         <p>{t('help.basics.navDesc')}</p>
       </section>

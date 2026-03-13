@@ -35,49 +35,36 @@ export function registerReederrProtocol(): void {
                     const isMediaStream = contentType.startsWith('video/') || contentType.startsWith('audio/');
                     const isArchive = !!splitArchivePath(vpath);
 
+                    // Generate ETag based on size and mtime
+                    const etag = `W/"${fileSize}-${stats.mtime || 0}"`;
+                    
                     const baseHeaders: Record<string, string> = {
                         'Content-Type': contentType,
                         'Accept-Ranges': 'bytes',
                         'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+                        'ETag': etag,
                     };
 
-                    // For video/audio, use streaming. 
+                    // Handle Conditional Request (304 Not Modified)
+                    const ifNoneMatch = request.headers.get('if-none-match') ?? request.headers.get('If-None-Match');
+                    if (ifNoneMatch === etag) {
+                        return new Response(null, { status: 304, headers: baseHeaders });
+                    }
+
+                    // Use streaming for all files (images, video, audio) to minimize memory usage.
                     // vfs.streamFile handles both local files and 7-Zip pipes for archives.
-                    if (isMediaStream) {
-                        const rangeHeader = request.headers.get('range') ?? request.headers.get('Range') ?? '';
+                    const rangeHeader = request.headers.get('range') ?? request.headers.get('Range') ?? '';
 
-                        // If we don't have a file size (common for some archive streams), 
-                        // we still try to stream but without full Range support (instant start only).
-                        if (!rangeHeader || fileSize === 0) {
-                            const stream = streamFile(vpath);
-                            request.signal.addEventListener('abort', () => stream.destroy());
-                            return new Response(Readable.toWeb(stream) as ReadableStream, {
-                                status: 200,
-                                headers: {
-                                    ...baseHeaders,
-                                    ...(fileSize > 0 ? { 'Content-Length': String(fileSize) } : {}),
-                                },
-                            });
-                        }
-
+                    // For video/audio or large files, we support range if possible.
+                    // Note: Archive streams (7z pipe) don't support seeking well, so we ignore range for them.
+                    if (rangeHeader && fileSize > 0 && !isArchive) {
                         const range = parseRangeHeader(rangeHeader, fileSize);
-                        if (!range) {
-                            const stream = streamFile(vpath);
-                            request.signal.addEventListener('abort', () => stream.destroy());
-                            return new Response(Readable.toWeb(stream) as ReadableStream, {
-                                status: 200,
-                                headers: {
-                                    ...baseHeaders,
-                                    'Content-Length': String(fileSize),
-                                },
-                            });
-                        }
-
-                        // Local files support seeking. Archive streams are sequential (instant start).
-                        if (!isArchive) {
+                        if (range) {
                             const { start, end } = range;
                             const chunkSize = end - start + 1;
                             const stream = createReadStream(vpath, { start, end });
+                            request.signal.addEventListener('abort', () => stream.destroy());
 
                             return new Response(Readable.toWeb(stream) as ReadableStream, {
                                 status: 206, // Partial Content
@@ -87,31 +74,20 @@ export function registerReederrProtocol(): void {
                                     'Content-Range': `bytes ${start}-${end}/${fileSize}`,
                                 },
                             });
-                        } else {
-                            // Archive stream: 7z pipe doesn't support seeking well.
-                            // We just start from beginning for "instant playback".
-                            const stream = streamFile(vpath);
-                            request.signal.addEventListener('abort', () => stream.destroy());
-                            return new Response(Readable.toWeb(stream) as ReadableStream, {
-                                status: 200,
-                                headers: {
-                                    ...baseHeaders,
-                                    'Content-Length': String(fileSize),
-                                },
-                            });
                         }
-                    } else {
-                        // For images and other small files, read into memory buffer.
-                        // This is more robust for <img> tags in Chromium custom protocols.
-                        const buf = await readFile(vpath);
-                        return new Response(buf, {
-                            status: 200,
-                            headers: {
-                                ...baseHeaders,
-                                'Content-Length': String(buf.byteLength),
-                            },
-                        });
                     }
+
+                    // Standard streaming response (for images or non-seekable archive streams)
+                    const stream = streamFile(vpath);
+                    request.signal.addEventListener('abort', () => stream.destroy());
+
+                    return new Response(Readable.toWeb(stream) as ReadableStream, {
+                        status: 200,
+                        headers: {
+                            ...baseHeaders,
+                            ...(fileSize > 0 ? { 'Content-Length': String(fileSize) } : {}),
+                        },
+                    });
                 } catch (err) {
                     console.error(`[reederrProtocol] Failed to handle path: ${vpath}`, err);
                 }

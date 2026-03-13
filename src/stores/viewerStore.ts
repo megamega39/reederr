@@ -52,18 +52,24 @@ export function useViewerStore<T>(selector?: (state: ViewerFacade) => T) {
 
 export async function loadViewerFromStorage(): Promise<void> {
   try {
-    const raw = await PersistenceAPI.loadStore();
-    const data = raw[VIEWER_KEY] as any;
-    
-    if (data) {
-      if (data.historyIndex != null) useNavigationStore.setState({ historyIndex: data.historyIndex });
-      if (Array.isArray(data.favorites)) useFavoriteStore.setState({ favorites: data.favorites });
+    const res = await PersistenceAPI.loadStore();
+    if (res.ok) {
+      const raw = res.value;
+      // Support both new 'viewer' key and legacy 'viewer_state' key for robust restoration.
+      const data = (raw[VIEWER_KEY] || raw['viewer_state']) as any;
       
-      // Load paths LAST so reveals happen after dependent data is ready
-      if (data.currentPath) useNavigationStore.setState({ currentPath: data.currentPath });
-      if (data.selectedPath) useMediaStore.setState({ selectedPath: data.selectedPath });
+      if (data) {
+        if (data.historyIndex != null) useNavigationStore.setState({ historyIndex: data.historyIndex });
+        if (Array.isArray(data.favorites)) useFavoriteStore.setState({ favorites: data.favorites });
+        
+        // Load paths LAST so reveals happen after dependent data is ready
+        if (data.currentPath) useNavigationStore.setState({ currentPath: data.currentPath });
+        if (data.selectedPath) useMediaStore.setState({ selectedPath: data.selectedPath });
 
-      useAppStore.setState({ isHydrated: true });
+        useAppStore.setState({ isHydrated: true });
+      } else {
+        useAppStore.setState({ isHydrated: true });
+      }
     } else {
       useAppStore.setState({ isHydrated: true });
     }
@@ -72,7 +78,7 @@ export async function loadViewerFromStorage(): Promise<void> {
   }
 }
 
-export function saveViewerToStorage(): void {
+export async function saveViewerToStorage(): Promise<void> {
   const appState = useAppStore.getState();
   if (appState.isRestoring || !appState.isHydrated) return;
 
@@ -88,7 +94,7 @@ export function saveViewerToStorage(): void {
     favorites: fav.favorites,
   };
 
-  PersistenceAPI.saveStore({
+  await PersistenceAPI.saveStore({
     [VIEWER_KEY]: data,
   });
 }
@@ -104,15 +110,16 @@ useFavoriteStore.subscribe((state, prevState) => {
 useNavigationStore.subscribe((state, prevState) => {
   if (state.currentPath && state.currentPath !== prevState.currentPath) {
     const appState = useAppStore.getState();
-    const norm = (state.currentPath || '').toLowerCase();
+    const strPath = state.currentPath as string;
+    const norm = strPath.toLowerCase();
     
     // Skip reveal during restoration to avoid inconsistent states (PC vs Favorites)
     if (!appState.isRestoring && norm !== 'pc' && norm !== 'network') {
       useTreeStore.getState().revealPath(state.currentPath);
     }
     
-    if (!state.currentPath.includes('!') && state.currentPath !== 'pc' && state.currentPath !== 'network') {
-      FileSystemAPI.watchDirectory(state.currentPath);
+    if (!strPath.includes('!') && norm !== 'pc' && norm !== 'network') {
+      FileSystemAPI.watchDirectory(strPath);
     }
     saveViewerToStorage();
   }
@@ -124,10 +131,10 @@ useNavigationStore.subscribe((state, prevState) => {
     const { entries, currentPath } = state;
     
     // Sync Tree
-    useTreeStore.setState((s) => ({
+    useTreeStore.setState((s: any) => ({
       treeChildren: {
         ...s.treeChildren,
-        [currentPath]: entries
+        [currentPath as any]: entries
           .filter(e => e.isDirectory || e.isArchive)
           .map(e => ({ name: e.name, path: e.path, isDirectory: e.isDirectory, isArchive: e.isArchive }))
       }
@@ -137,8 +144,6 @@ useNavigationStore.subscribe((state, prevState) => {
     const mediaEntries = entries.filter(isMediaEntry);
     const mediaStore = useMediaStore.getState();
     
-    // If imageEntries is empty or path changed, and we have new media entries, 
-    // we use setImageEntries which sets the first one as selected.
     const pathChanged = currentPath !== prevState.currentPath;
     
     if (mediaEntries.length > 0 && (pathChanged || mediaStore.imageEntries.length === 0)) {
@@ -148,7 +153,6 @@ useNavigationStore.subscribe((state, prevState) => {
         mediaStore.loadMedia(newSelected);
       }
     } else {
-      // Just update the list without resetting selection during chunked loading
       useMediaStore.setState({ imageEntries: mediaEntries });
     }
   }

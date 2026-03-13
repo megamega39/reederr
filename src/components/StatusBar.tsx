@@ -2,7 +2,8 @@ import { memo, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { useNavigationStore } from '../stores/navigationStore';
 import { useMediaStore } from '../stores/mediaStore';
-import { useLayoutStore } from '../stores/layoutStore';
+import { useSettingsStore } from '../stores/settingsStore';
+import { useMediaCacheStore } from '../stores/mediaCacheStore';
 import { normalizePath } from '../stores/viewerStore.utils';
 import styles from './StatusBar.module.css';
 import { useTranslation } from '../i18n';
@@ -19,15 +20,16 @@ function formatSize(bytes?: number) {
 export const StatusBar = memo(() => {
   const { t } = useTranslation();
   
-  const { selectedPath, selectedPaths, selectedEntry, getSelectedPosition, imageDimensions } = useMediaStore(
+  const { selectedPath, selectedPaths, selectedEntry, getSelectedPosition } = useMediaStore(
     useShallow((s) => ({
       selectedPath: s.selectedPath,
       selectedPaths: s.selectedPaths,
       selectedEntry: s.selectedEntry,
       getSelectedPosition: s.getSelectedPosition,
-      imageDimensions: s.imageDimensions,
     }))
   );
+
+  const imageDimensions = useMediaCacheStore((s) => s.imageDimensions);
 
   const { entries } = useNavigationStore(
     useShallow((s) => ({
@@ -41,7 +43,7 @@ export const StatusBar = memo(() => {
     }))
   );
 
-  const scaleMode = useLayoutStore((s) => s.scaleMode);
+  const scaleMode = useSettingsStore((s) => s.scaleMode);
 
   const entry = selectedEntry();
   const { pos, total } = getSelectedPosition();

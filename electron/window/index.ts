@@ -2,7 +2,7 @@ import { app, BrowserWindow, nativeTheme } from 'electron';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFile as writeFileAsync, readFile as readFileAsync } from 'node:fs/promises';
-import { loadSettings, SETTINGS_FILE } from '../settings';
+import { getDb } from '../db';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -10,8 +10,9 @@ const __dirname = dirname(__filename);
 export let mainWindow: BrowserWindow | null = null;
 
 export function createWindow() {
-  const savedSettings = loadSettings();
-  const windowState = (savedSettings.windowState as any) || {
+  const db = getDb();
+  const row = db.prepare("SELECT value FROM kv_store WHERE key = 'windowState'").get();
+  const windowState = row ? JSON.parse((row as any).value) : {
     width: 1200,
     height: 800,
   };
@@ -45,15 +46,8 @@ export function createWindow() {
         isMaximized,
     };
     try {
-      const path = join(app.getPath('userData'), SETTINGS_FILE);
-      let current = {};
-      try {
-        const buf = await readFileAsync(path, 'utf-8');
-        current = JSON.parse(buf);
-      } catch {
-        // file might not exist or invalid json
-      }
-      await writeFileAsync(path, JSON.stringify({ ...current, windowState: newState }, null, 2), 'utf-8');
+      const db = getDb();
+      db.prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)').run('windowState', JSON.stringify(newState));
     } catch (err) {
       console.error('Failed to save window state', err);
     }

@@ -3,13 +3,13 @@ import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { platform } from 'node:os';
 import { toLongPathIfNeeded } from '../utils/longPath';
-import { spawn, exec } from 'node:child_process';
+import { processManager } from '../utils/processRunner';
 import { is7zAvailable } from '../sevenZipPath';
 import { getFileIcon, type IconSize } from '../fileIcon';
 import { splitArchivePath } from '../vfs/utils';
 import { listDirectory, readFile, stat, prefetchArchiveIndex } from '../vfs';
 import { getMediaUrl, disposeMediaIdFromUrl } from '../mediaUrlManager';
-import { loadSettings, saveSettings, loadConfig, saveConfig } from '../settings';
+import { getDb } from '../db';
 import { getDrives, getSpecialFolders, getNetworkResources } from '../drives';
 import { buildMenu } from '../menu';
 import { FileWatcher } from '../vfs/watcher';
@@ -22,7 +22,13 @@ export function registerIpcHandlers(
   httpMediaServer: any,
   thumbnailGenerator: ThumbnailGenerator
 ) {
-  ipcMain.handle('is-7z-available', (): boolean => is7zAvailable());
+  ipcMain.handle('is-7z-available', async (): Promise<{ ok: true; value: boolean } | { ok: false; error: string }> => {
+    try {
+      return { ok: true, value: is7zAvailable() };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
 
   ipcMain.handle(
     'get-media-urls',
@@ -62,47 +68,61 @@ export function registerIpcHandlers(
     }
   );
 
-  ipcMain.handle('release-media-url', (_e, { url }: { url: string }): void => {
-    if (typeof url !== 'string') return;
-    if (url.startsWith('http://127.0.0.1') && url.includes('?id=')) {
-      try {
+  ipcMain.handle('release-media-url', (_e, { url }: { url: string }): { ok: true; value: void } | { ok: false; error: string } => {
+    try {
+      if (typeof url !== 'string') return { ok: true, value: undefined };
+      if (url.startsWith('http://127.0.0.1') && url.includes('?id=')) {
         const id = new URL(url).searchParams.get('id');
         if (id) disposeMediaIdFromUrl(`media://${id}`);
-      } catch {
-        /* ignore */
+      } else {
+        disposeMediaIdFromUrl(url);
       }
-    } else {
-      disposeMediaIdFromUrl(url);
+      return { ok: true, value: undefined };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
-  ipcMain.handle('set-preview-fullscreen', (_e, { fullscreen }: { fullscreen: boolean }): void => {
-    const win = BrowserWindow.fromWebContents(_e.sender);
-    if (win && !win.isDestroyed()) {
-      win.setFullScreen(fullscreen);
-      win.setMenuBarVisibility(!fullscreen);
+  ipcMain.handle('set-preview-fullscreen', (_e, { fullscreen }: { fullscreen: boolean }): { ok: true; value: void } | { ok: false; error: string } => {
+    try {
+      const win = BrowserWindow.fromWebContents(_e.sender);
+      if (win && !win.isDestroyed()) {
+        win.setFullScreen(fullscreen);
+        win.setMenuBarVisibility(!fullscreen);
+      }
+      return { ok: true, value: undefined };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
-  ipcMain.handle('select-folder', async (): Promise<{ path: string } | null> => {
-    const win = getMainWindow();
-    if (!win) return null;
-    const result = await dialog.showOpenDialog(win, {
-      properties: ['openDirectory'],
-      title: 'フォルダを選択',
-    });
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return { path: result.filePaths[0] };
+  ipcMain.handle('select-folder', async (): Promise<{ ok: true; value: { path: string } | null } | { ok: false; error: string }> => {
+    try {
+      const win = getMainWindow();
+      if (!win) return { ok: false, error: 'Window not found' };
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openDirectory'],
+        title: 'フォルダを選択',
+      });
+      if (result.canceled || result.filePaths.length === 0) return { ok: true, value: null };
+      return { ok: true, value: { path: result.filePaths[0] } };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
-  ipcMain.handle('select-file', async (): Promise<{ path: string } | null> => {
-    const win = getMainWindow();
-    if (!win) return null;
-    const result = await dialog.showOpenDialog(win, {
-      properties: ['openFile'],
-      title: 'ファイルを選択',
-    });
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return { path: result.filePaths[0] };
+  ipcMain.handle('select-file', async (): Promise<{ ok: true; value: { path: string } | null } | { ok: false; error: string }> => {
+    try {
+      const win = getMainWindow();
+      if (!win) return { ok: false, error: 'Window not found' };
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openFile'],
+        title: 'ファイルを選択',
+      });
+      if (result.canceled || result.filePaths.length === 0) return { ok: true, value: null };
+      return { ok: true, value: { path: result.filePaths[0] } };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   ipcMain.handle(
@@ -137,77 +157,195 @@ export function registerIpcHandlers(
 
   ipcMain.handle(
     'read-file',
-    async (_e, { path }: { path: string }): Promise<ArrayBuffer> => {
-      if (typeof path !== 'string') throw new Error('Invalid path format');
-      return readFile(path);
+    async (_e, { path }: { path: string }): Promise<{ ok: true; value: ArrayBuffer } | { ok: false; error: string }> => {
+      try {
+        if (typeof path !== 'string') return { ok: false, error: 'Invalid path format' };
+        const buf = await readFile(path);
+        return { ok: true, value: buf };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
     }
   );
 
   ipcMain.handle(
     'stat',
-    async (_e, { path }: { path: string }) => {
-      if (typeof path !== 'string') return null;
-      return stat(path);
+    async (_e, { path }: { path: string }): Promise<{ ok: true; value: any } | { ok: false; error: string }> => {
+      try {
+        if (typeof path !== 'string') return { ok: true, value: null };
+        const res = await stat(path);
+        return { ok: true, value: res };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
     }
   );
 
-  ipcMain.handle('get-path-userData', (): string => {
-    return app.getPath('userData');
+  ipcMain.handle('get-path-userData', async (): Promise<{ ok: true; value: string } | { ok: false; error: string }> => {
+    try {
+      return { ok: true, value: app.getPath('userData') };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
-  ipcMain.handle('get-user-settings', (): Record<string, unknown> => {
-    return loadSettings();
+  ipcMain.handle('get-user-settings', async (): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; error: string }> => {
+    try {
+      const db = getDb();
+      // Exclude system keys like migration_status if needed, but for now just return all for consistency
+      const rows = db.prepare("SELECT key, value FROM kv_store WHERE key NOT IN ('migration_status')").all();
+      const settings: Record<string, unknown> = {};
+      for (const row of rows as any[]) {
+        try {
+          settings[row.key] = JSON.parse(row.value);
+        } catch {
+          settings[row.key] = row.value;
+        }
+      }
+      return { ok: true, value: settings };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   ipcMain.handle(
     'set-user-settings',
-    (_e, { data }: { data: Record<string, unknown> }): void => {
-      saveSettings(data);
+    (_e, { data }: { data: Record<string, unknown> }): { ok: true; value: void } | { ok: false; error: string } => {
+      try {
+        const db = getDb();
+        const upsert = db.prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)');
+        const transaction = db.transaction((items: Record<string, unknown>) => {
+          for (const [key, value] of Object.entries(items)) {
+            upsert.run(key, JSON.stringify(value));
+          }
+        });
+        transaction(data);
+        return { ok: true, value: undefined };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
     }
   );
 
-  ipcMain.handle('load-store', (): Record<string, unknown> => {
-    return loadConfig(false);
+  ipcMain.handle('load-store', async (): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; error: string }> => {
+    try {
+      const db = getDb();
+      const rows = db.prepare("SELECT key, value FROM kv_store").all();
+      const data: Record<string, unknown> = {};
+      for (const row of rows as any[]) {
+        try {
+          data[row.key] = JSON.parse(row.value);
+        } catch {
+          data[row.key] = row.value;
+        }
+      }
+      return { ok: true, value: data };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   ipcMain.handle(
     'save-store',
-    (_e, { data }: { data: Record<string, unknown> }): void => {
-      saveConfig(data);
+    (_e, { data }: { data: Record<string, unknown> }): { ok: true; value: void } | { ok: false; error: string } => {
+      try {
+        const db = getDb();
+        const upsert = db.prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)');
+        const transaction = db.transaction((items: Record<string, unknown>) => {
+          for (const [key, value] of Object.entries(items)) {
+            upsert.run(key, JSON.stringify(value));
+          }
+        });
+        transaction(data);
+        return { ok: true, value: undefined };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
     }
   );
 
   ipcMain.handle(
     'get-file-icon',
-    async (_e, { absPath, size }: { absPath: string; size: IconSize }): Promise<string> => {
-      return getFileIcon(absPath, size ?? 16);
+    async (_e, { absPath, size }: { absPath: string; size: IconSize }): Promise<{ ok: true; value: string } | { ok: false; error: string }> => {
+      try {
+        const icon = await getFileIcon(absPath, size ?? 16);
+        return { ok: true, value: icon };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
     }
   );
 
-  ipcMain.handle('get-special-folders', () => getSpecialFolders());
-  ipcMain.handle('get-drives', () => getDrives());
-  ipcMain.handle('get-network-resources', () => getNetworkResources());
-
-  ipcMain.handle('open-in-explorer', async (_e, { path: folderPath }: { path: string }): Promise<void> => {
-    if (folderPath && existsSync(toLongPathIfNeeded(folderPath))) {
-      await shell.openPath(folderPath);
+  ipcMain.handle('get-special-folders', async (): Promise<{ ok: true; value: any[] } | { ok: false; error: string }> => {
+    try {
+      const res = await getSpecialFolders();
+      return { ok: true, value: res };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('get-drives', async (): Promise<{ ok: true; value: any[] } | { ok: false; error: string }> => {
+    try {
+      const res = await getDrives();
+      return { ok: true, value: res };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('get-network-resources', async (): Promise<{ ok: true; value: any[] } | { ok: false; error: string }> => {
+    try {
+      const res = await getNetworkResources();
+      return { ok: true, value: res };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
-  ipcMain.handle('copy-path', (_e, { path: text }: { path: string }): void => {
-    clipboard.writeText(text);
+  ipcMain.handle('open-in-explorer', async (_e, { path: folderPath }: { path: string }): Promise<{ ok: true; value: void } | { ok: false; error: string }> => {
+    try {
+      if (folderPath && existsSync(toLongPathIfNeeded(folderPath))) {
+        await shell.openPath(folderPath);
+      }
+      return { ok: true, value: undefined };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
-  ipcMain.handle('copy-parent-path', (_e, { path: folderPath }: { path: string }): void => {
-    clipboard.writeText(dirname(folderPath));
+  ipcMain.handle('copy-path', (_e, { path: text }: { path: string }): { ok: true; value: void } | { ok: false; error: string } => {
+    try {
+      clipboard.writeText(text);
+      return { ok: true, value: undefined };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
-  ipcMain.handle('show-in-explorer', async (_e, { path: folderPath }: { path: string }): Promise<void> => {
-    if (!folderPath || !existsSync(toLongPathIfNeeded(folderPath))) return;
-    if (platform() === 'win32') {
-      exec(`explorer.exe /select,"${folderPath.replace(/"/g, '""')}"`, () => { });
-    } else {
-      await shell.openPath(folderPath);
+  ipcMain.handle('copy-parent-path', (_e, { path: folderPath }: { path: string }): { ok: true; value: void } | { ok: false; error: string } => {
+    try {
+      clipboard.writeText(dirname(folderPath));
+      return { ok: true, value: undefined };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('show-in-explorer', async (_e, { path: folderPath }: { path: string }): Promise<{ ok: true; value: void } | { ok: false; error: string }> => {
+    try {
+      if (!folderPath || !existsSync(toLongPathIfNeeded(folderPath))) return { ok: true, value: undefined };
+      if (platform() === 'win32') {
+        return new Promise((resolve) => {
+          processManager.exec(`explorer.exe /select,"${folderPath.replace(/"/g, '""')}"`, {}, (err) => {
+            if (err) resolve({ ok: false, error: err.message });
+            else resolve({ ok: true, value: undefined });
+          });
+        });
+      } else {
+        await shell.openPath(folderPath);
+        return { ok: true, value: undefined };
+      }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -269,7 +407,7 @@ export function registerIpcHandlers(
     'open-with-app',
     async (_e, { path, appPath }: { path: string; appPath: string }): Promise<{ ok: true; value: void } | { ok: false; error: string }> => {
       try {
-        const child = spawn(appPath, [path], {
+        const child = processManager.spawn(appPath, [path], {
           detached: true,
           stdio: 'ignore',
           shell: true,
@@ -282,36 +420,46 @@ export function registerIpcHandlers(
     }
   );
 
-  ipcMain.handle('rebuild-menu', (_e, { lang }: { lang: 'ja' | 'en' }): void => {
-    const win = getMainWindow();
-    if (win) {
-      buildMenu(win, lang);
+  ipcMain.handle('rebuild-menu', (_e, { lang }: { lang: 'ja' | 'en' }): { ok: true; value: void } | { ok: false; error: string } => {
+    try {
+      const win = getMainWindow();
+      if (win) {
+        buildMenu(win, lang);
+      }
+      return { ok: true, value: undefined };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
-  ipcMain.handle('watch-directory', (_e, { path }: { path: string }): void => {
-    if (!fileWatcher) {
-      fileWatcher = new FileWatcher((changedPath) => {
-        const win = getMainWindow();
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('file-system-changed', { path: changedPath });
-        }
-      });
+  ipcMain.handle('watch-directory', (_e, { path }: { path: string }): { ok: true; value: void } | { ok: false; error: string } => {
+    try {
+      if (!fileWatcher) {
+        fileWatcher = new FileWatcher((changedPath) => {
+          const win = getMainWindow();
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('file-system-changed', { path: changedPath });
+          }
+        });
+      }
+      fileWatcher.watch(path);
+      return { ok: true, value: undefined };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
-    fileWatcher.watch(path);
   });
 
-  ipcMain.handle('get-thumbnail', async (_e, { path, width, height }: { path: string; width: number; height: number }): Promise<string | null> => {
+  ipcMain.handle('get-thumbnail', async (_e, { path, width, height }: { path: string; width: number; height: number }): Promise<{ ok: true; value: string | null } | { ok: false; error: string }> => {
     try {
       const resultPath = await thumbnailGenerator.getThumbnail(path, { width, height });
       if (resultPath) {
         // Use a dummy host 'cache' to prevent Chromium's URL normalization 
         // from losing the Windows drive colon (e.g. C: -> c).
-        return `thumb://cache/${resultPath.replace(/\\/g, '/')}`;
+        return { ok: true, value: `thumb://cache/${resultPath.replace(/\\/g, '/')}` };
       }
-      return null;
+      return { ok: true, value: null };
     } catch (err) {
-      return null;
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 }

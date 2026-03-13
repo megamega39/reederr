@@ -18,17 +18,17 @@
   --accent-bg-active: #99c9ff;
   --accent-text-selection: #ffffff;
   
-  --text-main: #000000;
+  --text-main: #111111;
   --text-muted: #555555;
   --text-disabled: #888888;
   --text-error: #cc0000;
   
   /* Fonts */
-  --font-family: 'MS UI Gothic', 'ＭＳ ＵＩゴシック', sans-serif;
+  --font-family: 'MS UI Gothic', 'ＭＳ ＵＩゴシック', 'MS Gothic', 'ＭＳ ゴシック', sans-serif;
   --font-size-base: 12px;
   --font-size-sm: 10px;
   
-  --row-height: 18px;
+  --row-height: 22px;
   
   /* Layout */
   --sidebar-width: 250px;
@@ -48,12 +48,15 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: 'MS UI Gothic', 'ＭＳ ＵＩゴシック', sans-serif;
+  font-family: var(--font-family);
   font-size: var(--font-size-base);
   -webkit-font-smoothing: none !important;
-  text-rendering: optimizeSpeed; /* Best for pixel preservation at small sizes */
-  letter-spacing: 0px;
-  color: #000;
+  -webkit-text-stroke: 0px !important;
+  font-smooth: never !important;
+  text-rendering: optimizeSpeed;
+  letter-spacing: -0.2px;
+  color: var(--text-main);
+  background: var(--win-bg);
 }
 
 /* Legacy layout and overlays removed - moved to modules */

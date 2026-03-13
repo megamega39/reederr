@@ -46,10 +46,10 @@ interface LayoutState {
 }
 
 const MIN_LEFT = 40;
-const DEFAULT_LEFT = 300;
+const DEFAULT_LEFT = 400; // Wider sidebar by default
 
 const MIN_FOLDER = 40;
-const DEFAULT_FOLDER = 140;
+const DEFAULT_FOLDER = 400; // Taller tree view by default
 
 const MIN_COL = 30;
 const DEFAULT_NAME = 120;
@@ -115,7 +115,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   hoveredPosition: null,
   setHoveredItem: (path, pos) => set({ hoveredPath: path, hoveredPosition: pos ?? null }),
 
-  showHoverPreview: true,
+  showHoverPreview: false, // Disabled by default
   toggleHoverPreview: () => set((s) => ({ showHoverPreview: !s.showHoverPreview })),
 
   setActiveTreePrefix: (p) => set({ activeTreePrefix: p }),
@@ -123,14 +123,18 @@ export const useLayoutStore = create<LayoutState>((set) => ({
 
 export const loadLayoutFromStorage = async () => {
   try {
-    const raw = await PersistenceAPI.loadStore();
-    const data = raw[LAYOUT_KEY] as Partial<LayoutState> | undefined;
-    if (data) {
-      useLayoutStore.setState((state) => ({
-        ...state,
-        ...data,
-        isHydrated: true,
-      }));
+    const res = await PersistenceAPI.loadStore();
+    if (res.ok) {
+      const data = res.value[LAYOUT_KEY] as Partial<LayoutState> | undefined;
+      if (data) {
+        useLayoutStore.setState((state) => ({
+          ...state,
+          ...data,
+          isHydrated: true,
+        }));
+      } else {
+        useLayoutStore.getState().setHydrated(true);
+      }
     } else {
       useLayoutStore.getState().setHydrated(true);
     }
@@ -139,7 +143,7 @@ export const loadLayoutFromStorage = async () => {
   }
 }
 
-export function saveLayoutToStorage(): void {
+export async function saveLayoutToStorage(): Promise<void> {
   const state = useLayoutStore.getState();
   if (state.isRestoring || !state.isHydrated) {
     return;
@@ -174,8 +178,7 @@ export function saveLayoutToStorage(): void {
     activeTreePrefix,
   };
 
-  console.log('[Persistence] Saving layout state:', Object.keys(layoutState));
-  PersistenceAPI.saveStore({
+  await PersistenceAPI.saveStore({
     [LAYOUT_KEY]: layoutState,
   });
 }

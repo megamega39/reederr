@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { useLayoutStore } from '../stores/layoutStore';
+import { useSettingsStore } from '../stores/settingsStore';
 
 interface ImageViewProps {
   srcs: (string | null)[];
@@ -11,7 +11,7 @@ interface ImageViewProps {
 export const ImageView = memo(({ srcs, alt, onDimensions, paths }: ImageViewProps) => {
   const validSrcs = srcs.filter((s): s is string => !!s);
 
-  const scaleMode = useLayoutStore((s) => s.scaleMode);
+  const scaleMode = useSettingsStore((s) => s.scaleMode);
   const isSpread = validSrcs.length > 1;
 
   return (

@@ -1,6 +1,8 @@
+import { AnyPath } from './paths';
+
 export interface DirectoryEntry {
   name: string;
-  path: string;
+  path: AnyPath;
   isDirectory: boolean;
   isArchive: boolean;
   size?: number;
@@ -8,7 +10,7 @@ export interface DirectoryEntry {
 }
 
 export interface HistoryEntry {
-  path: string;
+  path: AnyPath;
   name: string;
   type: 'folder' | 'archive' | 'pc' | 'network' | 'other';
 }

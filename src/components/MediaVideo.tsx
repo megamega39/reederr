@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
 
 export function MediaVideo({ src, autoPlay, loop, onEnded }: Props) {
     const videoRef = useRef<HTMLVideoElement>(null);
+    const [isReady, setIsReady] = useState(false);
     const { playbackRate, preservesPitch } = useMediaPlayerStore();
 
     useEffect(() => {
@@ -37,9 +38,16 @@ export function MediaVideo({ src, autoPlay, loop, onEnded }: Props) {
                 controls
                 autoPlay={autoPlay}
                 preload="metadata"
+                onLoadedData={() => setIsReady(true)}
                 onEnded={onEnded}
                 className="media-video"
-                style={{ objectFit: 'contain', width: '100%', height: '100%' }}
+                style={{ 
+                    objectFit: 'contain', 
+                    width: '100%', 
+                    height: '100%',
+                    opacity: isReady ? 1 : 0,
+                    transition: 'opacity 0.2s'
+                }}
             />
         </div>
     );

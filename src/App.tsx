@@ -1,46 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useViewerStore } from './stores/viewerStore';
 import { useLayoutStore } from './stores/layoutStore';
 import { useSettingsStore } from './stores/settingsStore';
-import { FolderTree } from './components/FolderTree';
-import { FileList } from './components/FileList';
-import { MediaView } from './components/MediaView';
-import { ViewerToolbar } from './components/ViewerToolbar';
-import { NavigationBar } from './components/NavigationBar';
-import { StatusBar } from './components/StatusBar';
-import { AddressBar } from './components/AddressBar';
 import { ResizableDivider } from './components/ResizableDivider';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { SettingsModal } from './components/SettingsModal';
-import { HelpModal } from './components/HelpModal';
 import { PersistenceManager } from './components/PersistenceManager';
 import { ToastContainer } from './components/ToastContainer';
 import { HoverPreview } from './components/HoverPreview';
+import { StatusBar } from './components/StatusBar';
 import { useGlobalKeyboardShortcuts } from './hooks/useGlobalKeyboardShortcuts';
 import { useIpcMenuHandlers } from './hooks/useIpcMenuHandlers';
 import { useSystemNotifications } from './hooks/useSystemNotifications';
 import { MediaAPI } from './services/api';
+
+// Islands
+import { AppHeader } from './components/layout/AppHeader';
+import { AppSidebar } from './components/layout/AppSidebar';
+import { AppMainView } from './components/layout/AppMainView';
+
 import styles from './App.module.css';
 import './styles/variables.css';
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const leftPaneWidth = useLayoutStore((s) => s.leftPaneWidth);
+  
+  // High-frequency state extracted to sub-components
   const setLeftPaneWidth = useLayoutStore((s) => s.setLeftPaneWidth);
-  const folderPaneHeight = useLayoutStore((s) => s.folderPaneHeight);
-  const setFolderPaneHeight = useLayoutStore((s) => s.setFolderPaneHeight);
-  
-  // Navigation actions (slideshow uses goNext)
-  const goNext = useViewerStore((s) => s.goNext);
-  const prevEntry = useViewerStore((s) => s.prevEntry);
-  const nextEntry = useViewerStore((s) => s.nextEntry);
-  const goPrevPage = useViewerStore((s) => s.goPrevPage);
-  const goNextPage = useViewerStore((s) => s.goNextPage);
-  const slideshowActive = useViewerStore((s) => s.slideshowActive);
-
-  const previewRef = useRef<HTMLDivElement>(null);
-  
+  const leftPaneWidth = useLayoutStore((s) => s.leftPaneWidth); 
   const isPreviewFullscreen = useLayoutStore((s) => s.isPreviewFullscreen);
   const setPreviewFullscreen = useLayoutStore((s) => s.setPreviewFullscreen);
 
@@ -51,34 +38,18 @@ export default function App() {
     return unsubscribe;
   }, [setPreviewFullscreen]);
 
-  // Listen for system-level notifications (toasts from main process)
   useSystemNotifications();
 
-  const handleToggleFullscreen = () => {
-    const next = !isPreviewFullscreen;
-    MediaAPI.setPreviewFullscreen(next);
-  };
-
-  useEffect(() => {
-    const el = previewRef.current;
-    if (!el) return;
-    const handler = (e: WheelEvent) => {
-      if (e.deltaY > 0 && nextEntry()) {
-        e.preventDefault();
-        goNextPage();
-      } else if (e.deltaY < 0 && prevEntry()) {
-        e.preventDefault();
-        goPrevPage();
-      }
-    };
-    el.addEventListener('wheel', handler, { passive: false });
-    return () => el.removeEventListener('wheel', handler);
-  }, [goNextPage, goPrevPage, nextEntry, prevEntry]);
+  const handleToggleFullscreen = useCallback(() => {
+    MediaAPI.setPreviewFullscreen(!useLayoutStore.getState().isPreviewFullscreen);
+  }, []);
 
   useGlobalKeyboardShortcuts(handleToggleFullscreen, () => setShowHelp(prev => !prev));
   useIpcMenuHandlers(handleToggleFullscreen, setShowSettings, setShowHelp);
 
-  // Slideshow Timer Effect
+  // Slideshow Logic
+  const goNext = useViewerStore((s) => s.goNext);
+  const slideshowActive = useViewerStore((s) => s.slideshowActive);
   const slideshowInterval = useSettingsStore((s) => s.slideshowInterval);
 
   useEffect(() => {
@@ -93,56 +64,28 @@ export default function App() {
     <ErrorBoundary>
       <PersistenceManager />
       <div className={`${styles.app} ${isPreviewFullscreen ? styles.appPreviewFullscreen : ''}`}>
-        {/* ヘッダー・ツールバー類 */}
-        <div className={styles.appHeaderArea}>
-          <NavigationBar />
-          {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-          {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
-          <AddressBar />
-        </div>
+        <AppHeader 
+          showSettings={showSettings} 
+          setShowSettings={setShowSettings}
+          showHelp={showHelp}
+          setShowHelp={setShowHelp}
+        />
 
-      <div className={styles.appContent}>
-        <div
-          className={styles.appLeft}
-          style={{ width: leftPaneWidth, minWidth: leftPaneWidth, maxWidth: leftPaneWidth }}
-        >
-          <div className={styles.appLeftPanes}>
-            <div
-              className={styles.appFolderPane}
-              style={{ height: folderPaneHeight, minHeight: folderPaneHeight }}
-            >
-                <FolderTree />
-              </div>
-              <ResizableDivider
-                orientation="vertical"
-                onResize={(delta) => setFolderPaneHeight(folderPaneHeight + delta)}
-              />
-              <div className={styles.appFilePane}>
-                <FileList />
-              </div>
-            </div>
-          </div>
+        <div className={styles.appContent}>
+          <AppSidebar />
 
           <ResizableDivider
             orientation="horizontal"
             onResize={(delta) => setLeftPaneWidth(leftPaneWidth + delta)}
           />
 
-          <div
-            className={styles.appRight}
-            ref={previewRef}
-            onDoubleClick={handleToggleFullscreen}
-            role="button"
-            title="ダブルクリックで表示のみ全画面"
-          >
-            <ViewerToolbar />
-            <MediaView />
-          </div>
+          <AppMainView />
         </div>
 
         <div className={styles.statusBarWrapper}>
           <StatusBar />
         </div>
+        
         <HoverPreview />
         <ToastContainer />
       </div>
