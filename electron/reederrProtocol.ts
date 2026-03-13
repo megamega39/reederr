@@ -27,7 +27,10 @@ export function registerReederrProtocol(): void {
                 // Optimization: for standard local files or archive entries
                 try {
                     const stats = await stat(vpath);
-                    const fileSize = stats?.size ?? 0;
+                    if (!stats || stats.isDirectory) {
+                        return new Response(stats?.isDirectory ? 'Forbidden: Directory' : 'Not Found', { status: stats?.isDirectory ? 403 : 404 });
+                    }
+                    const fileSize = stats.size;
                     const contentType = getMimeType(vpath);
                     const isMediaStream = contentType.startsWith('video/') || contentType.startsWith('audio/');
                     const isArchive = !!splitArchivePath(vpath);
@@ -47,6 +50,7 @@ export function registerReederrProtocol(): void {
                         // we still try to stream but without full Range support (instant start only).
                         if (!rangeHeader || fileSize === 0) {
                             const stream = streamFile(vpath);
+                            request.signal.addEventListener('abort', () => stream.destroy());
                             return new Response(Readable.toWeb(stream) as ReadableStream, {
                                 status: 200,
                                 headers: {
@@ -59,6 +63,7 @@ export function registerReederrProtocol(): void {
                         const range = parseRangeHeader(rangeHeader, fileSize);
                         if (!range) {
                             const stream = streamFile(vpath);
+                            request.signal.addEventListener('abort', () => stream.destroy());
                             return new Response(Readable.toWeb(stream) as ReadableStream, {
                                 status: 200,
                                 headers: {
@@ -86,6 +91,7 @@ export function registerReederrProtocol(): void {
                             // Archive stream: 7z pipe doesn't support seeking well.
                             // We just start from beginning for "instant playback".
                             const stream = streamFile(vpath);
+                            request.signal.addEventListener('abort', () => stream.destroy());
                             return new Response(Readable.toWeb(stream) as ReadableStream, {
                                 status: 200,
                                 headers: {

@@ -127,7 +127,7 @@
   font-size: var(--font-size-base);
   cursor: pointer;
   outline: none;
-  transition: all 0.2s;
+  outline: none;
 }
 
 .select:hover {

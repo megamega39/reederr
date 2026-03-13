@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useViewerStore } from '../stores/viewerStore';
+import { useTreeStore } from '../stores/treeStore';
+import { useFavoriteStore } from '../stores/favoriteStore';
+import { useNavigationStore } from '../stores/navigationStore';
+import { useAppStore } from '../stores/appStore';
 import { normalizePath, isArchivePath, getParentPath, resolveArchivePath } from '../stores/viewerStore.utils';
 import { FileIcon } from './FileIcon';
 import { useLayoutStore } from '../stores/layoutStore';
@@ -25,21 +28,33 @@ interface FlatNode {
 
 export function FolderTree() {
   const { t } = useTranslation();
-  const { treeRoots, treeChildren, expandedPaths, favorites, currentPath, error } = useViewerStore(
+  
+    const { treeRoots, treeChildren, expandedPaths, loadingPaths, refreshTreeChildren, expandPath } = useTreeStore(
+      useShallow((s) => ({
+        treeRoots: s.treeRoots,
+        treeChildren: s.treeChildren,
+        expandedPaths: s.expandedPaths,
+        loadingPaths: s.loadingPaths,
+        refreshTreeChildren: s.refreshTreeChildren,
+        expandPath: s.expandPath,
+      }))
+    );
+
+  const { favorites } = useFavoriteStore(
     useShallow((s) => ({
-      treeRoots: s.treeRoots,
-      treeChildren: s.treeChildren,
-      expandedPaths: s.expandedPaths,
       favorites: s.favorites,
-      currentPath: s.currentPath,
-      error: s.error,
     }))
   );
 
-  const { refreshTreeChildren, expandPath } = useViewerStore(
+  const { currentPath } = useNavigationStore(
     useShallow((s) => ({
-      refreshTreeChildren: s.refreshTreeChildren,
-      expandPath: s.expandPath,
+      currentPath: s.currentPath,
+    }))
+  );
+
+  const { error } = useAppStore(
+    useShallow((s) => ({
+      error: s.error,
     }))
   );
 
@@ -51,14 +66,16 @@ export function FolderTree() {
 
     // Recursive helper to add children
     const addNodes = (parentPath: string, depth: number, prefix: string) => {
-      const isArch = isArchivePath(parentPath);
-      const lookupPath = isArch ? parentPath + '!' : parentPath;
-      const children = treeChildren[lookupPath] ?? [];
+      const normParent = normalizePath(parentPath);
+      const isArch = isArchivePath(normParent);
+      const lookupPath = isArch && !normParent.includes('!') ? normParent + '!' : normParent;
+      const children = treeChildren[normalizePath(lookupPath)];
+      if (!children) return;
       
-      children.forEach(child => {
-        const normPath = normalizePath(child.path);
+      for (const child of children) {
+        const normPath = child.path; // Already normalized in store
         const nodeKey = `${prefix}-${normPath}`;
-        const isCollapsed = !expandedPaths[nodeKey];
+        const isExpanded = expandedPaths[nodeKey];
         
         nodes.push({
           id: nodeKey,
@@ -70,10 +87,10 @@ export function FolderTree() {
           prefix
         });
 
-        if (!isCollapsed) {
+        if (isExpanded) {
           addNodes(normPath, depth + 1, prefix);
         }
-      });
+      }
     };
 
     // Favorites Section
@@ -140,7 +157,7 @@ export function FolderTree() {
   const virtualizer = useVirtualizer({
     count: flatNodes.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 24,
+    estimateSize: () => 18,
     overscan: 20
   });
 
@@ -180,8 +197,12 @@ export function FolderTree() {
     };
   }, [refreshTreeChildren, expandPath]);
 
-  const isRestoring = useViewerStore((s) => s.isRestoring);
-  const isHydrated = useViewerStore((s) => s.isHydrated);
+  const { isRestoring, isHydrated } = useAppStore(
+    useShallow((s) => ({
+      isRestoring: s.isRestoring,
+      isHydrated: s.isHydrated,
+    }))
+  );
   const lastScrolledPath = useRef<string | null>(null);
 
   // Scroll current path into view when it changes, when list grows, or when restoration state changes
@@ -241,7 +262,7 @@ export function FolderTree() {
   if (treeRoots.length === 0) {
     return (
       <div className="folder-tree">
-        <div className="folder-tree-header">{t('settings.fileLoading')}</div>
+        <div className="folder-tree-header">{t('tree.header')}</div>
         <div className="folder-tree-content" ref={parentRef}>
           <div className="folder-tree-empty">
             {error ? `⚠ ${error}` : t('common.loading')}
@@ -253,7 +274,7 @@ export function FolderTree() {
 
   return (
     <div className="folder-tree">
-      <div className="folder-tree-header">{t('settings.fileLoading')}</div>
+      <div className="folder-tree-header">{t('tree.header')}</div>
       <div className="folder-tree-content" ref={parentRef} style={{ height: '100%', overflow: 'auto' }}>
         <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
           {virtualizer.getVirtualItems().map((vItem) => {
@@ -273,6 +294,10 @@ export function FolderTree() {
                 isActiveArchive={!!isActiveArchive}
                 isExpanded={!!(expandedPaths[node.id] || (node.isFavoriteHeader && favExpanded))}
                 onToggleFav={() => setFavExpanded(!favExpanded)}
+                // Optimization: Pass necessary state from parent to avoid per-row store subscriptions
+                loaded={!!treeChildren[normalizePath(node.isArchive ? node.path + '!' : node.path)]}
+                isLoading={!!loadingPaths[normalizePath(node.isArchive ? node.path + '!' : node.path)]}
+                hasChildren={node.isVirtual ? true : (treeChildren[normalizePath(node.isArchive ? node.path + '!' : node.path)]?.length ?? 0) > 0}
               />
             );
           })}
@@ -282,13 +307,16 @@ export function FolderTree() {
   );
 }
 
-function TreeItemRow({
+const TreeItemRow = React.memo(function TreeItemRow({
   node,
   virtualItem,
   isSelected,
   isActiveArchive,
   isExpanded,
-  onToggleFav
+  onToggleFav,
+  loaded,
+  isLoading,
+  hasChildren
 }: {
   node: FlatNode;
   virtualItem: any;
@@ -296,47 +324,70 @@ function TreeItemRow({
   isActiveArchive: boolean;
   isExpanded: boolean;
   onToggleFav: () => void;
+  loaded: boolean;
+  isLoading: boolean;
+  hasChildren: boolean;
 }) {
-  const loadDirectory = useViewerStore((s) => s.loadDirectory);
-  const toggleExpand = useViewerStore((s) => s.toggleExpand);
-  const ensureTreeChildren = useViewerStore((s) => s.ensureTreeChildren);
-  const treeChildren = useViewerStore((s) => s.treeChildren);
-  const editingNodeId = useViewerStore((s) => s.editingNodeId);
-  const setEditingNodeId = useViewerStore((s) => s.setEditingNodeId);
+  const { toggleExpand, ensureTreeChildren, setEditingNodeId, editingNodeId } = useTreeStore(
+    useShallow((s) => ({
+      toggleExpand: s.toggleExpand,
+      ensureTreeChildren: s.ensureTreeChildren,
+      setEditingNodeId: s.setEditingNodeId,
+      editingNodeId: s.editingNodeId,
+    }))
+  );
+
+  const setActiveTreePrefix = useLayoutStore((s) => s.setActiveTreePrefix);
+
+  const { loadDirectory } = useNavigationStore(
+    useShallow((s) => ({
+      loadDirectory: s.loadDirectory,
+    }))
+  );
+  
   const setHoveredItem = useLayoutStore((s) => s.setHoveredItem);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
-  const isArch = !!node.isArchive;
-  const lookupPath = isArch ? node.path + '!' : node.path;
-  const children = treeChildren[lookupPath] ?? [];
-  const hasChildren = node.isVirtual ? true : children.length > 0;
-  const loaded = lookupPath in treeChildren;
-  const isExpandable = isArch || !loaded || hasChildren || node.isFavoriteHeader;
+  const isExpandable = node.isArchive || !loaded || hasChildren || node.isFavoriteHeader;
 
-  const handleExpand = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleExpand = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setActiveTreePrefix(node.prefix);
+    if (isLoading) return; 
+    
     if (node.isFavoriteHeader) {
       onToggleFav();
       return;
     }
+    
+    // Toggle IMMEDIATELY for responsiveness
+    toggleExpand(node.id);
+
+    const lookupPath = node.isArchive ? node.path + '!' : node.path;
+    
     if (node.isArchive) {
       loadDirectory(node.path);
-      toggleExpand(node.id);
-      return;
     }
-    if (!loaded) await ensureTreeChildren(node.path);
-    toggleExpand(node.id);
+    
+    // Critical Fix: If it's a virtual root and we are expanding, 
+    // force a refresh if it's currently empty to recover from previous failures.
+    const isVirtualRoot = node.path === 'pc' || node.path === 'network';
+    if (!loaded || (isVirtualRoot && !hasChildren)) {
+      ensureTreeChildren(lookupPath).catch(err => {
+        console.error('[Tree] Deferred load failed:', err);
+      });
+    }
   };
 
   const handleClick = () => {
+    setActiveTreePrefix(node.prefix);
     if (node.isFavoriteHeader) {
-      onToggleFav();
+      handleExpand();
       return;
     }
-    if (node.isVirtual) return;
     loadDirectory(node.path);
-    if (node.isArchive) toggleExpand(node.id);
+    if (node.isArchive || node.isVirtual) handleExpand();
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -362,10 +413,11 @@ function TreeItemRow({
       return;
     }
     
-    const parent = getParentPath(node.path);
-    if (parent) {
-      useViewerStore.getState().refreshTreeChildren(parent);
-      await useViewerStore.getState().ensureTreeChildren(parent);
+    const parentPath = getParentPath(node.path);
+    if (parentPath) {
+      const tree = useTreeStore.getState();
+      tree.refreshTreeChildren(parentPath);
+      await tree.ensureTreeChildren(parentPath);
     }
     setEditingNodeId(null);
   };
@@ -411,7 +463,7 @@ function TreeItemRow({
         {node.isFavoriteHeader ? (
           <Star size={14} style={{ marginRight: 4, color: '#f1c40f' }} fill="#f1c40f" />
         ) : (
-          <FileIcon path={node.prefix === 'pc' ? 'C:\\' : (node.prefix === 'network' ? (node.path === 'network' ? 'network' : node.path) : node.path)} isDirectory={node.isDirectory} size={16} />
+          <FileIcon path={node.path === 'pc' ? 'pc' : (node.path === 'network' ? 'network' : node.path)} isDirectory={node.isDirectory} size={16} />
         )}
         
         {editingNodeId === node.path ? (
@@ -452,5 +504,5 @@ function TreeItemRow({
       )}
     </div>
   );
-}
+});
 

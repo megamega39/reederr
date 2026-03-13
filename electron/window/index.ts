@@ -86,7 +86,7 @@ export function createWindow() {
       }
     });
 
-    setTimeout(tryLoad, 800);
+    setTimeout(tryLoad, 100);
   } else {
     mainWindow.loadFile(join(__dirname, '../../dist/index.html'));
   }

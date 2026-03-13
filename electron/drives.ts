@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { platform } from 'node:os';
 import { existsSync } from 'node:fs';
+import { exec } from 'node:child_process';
 
 const NETWORK_TIMEOUT_MS = 10_000;
 
@@ -9,33 +10,66 @@ export async function getDrives(): Promise<Array<{ name: string; path: string }>
   if (platform() !== 'win32') return drives;
 
   return new Promise((resolve) => {
-    const { exec } = require('node:child_process');
-    // Using wmic to get logical disks is more robust than just checking existsSync(A-Z)
-    exec('wmic logicaldisk get deviceid,volumename', (error: any, stdout: string) => {
+    
+    const timeout = 5000;
+    let resolved = false;
+
+    // Use PowerShell for modern, robust drive detection
+    const psCommand = `powershell -NoProfile -Command "[System.IO.DriveInfo]::GetDrives() | ForEach-Object { if ($_.DriveType -ne 'NoRootDirectory') { \\"$($_.Name)|$($_.VolumeLabel)\\" } }"`;
+
+    const child = exec(psCommand, (error: any, stdout: string) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+
       if (error) {
-        // Fallback to simple A-Z check if wmic fails
-        for (let i = 65; i <= 90; i++) {
-          const letter = String.fromCharCode(i) + ':';
-          const path = letter + '\\';
-          if (existsSync(path)) {
-            drives.push({ name: letter === 'C:' ? `Windows (${letter})` : `ボリューム (${letter})`, path });
-          }
-        }
-        resolve(drives);
+        console.error('[Drives] PowerShell getDrives failed:', error);
+        fallbackScan(drives, resolve);
         return;
       }
 
-      const lines = stdout.split(/\r?\n/).filter(line => line.trim() && !line.toLowerCase().includes('deviceid'));
+      const lines = stdout.split(/\r?\n/).filter(line => line.trim());
+      if (lines.length === 0) {
+        fallbackScan(drives, resolve);
+        return;
+      }
+
       for (const line of lines) {
-        const parts = line.trim().split(/\s{2,}/);
-        const deviceId = parts[0];
-        const volumeName = parts[1] || (deviceId === 'C:' ? 'Windows' : 'ボリューム');
-        const path = deviceId + '\\';
-        drives.push({ name: `${volumeName} (${deviceId})`, path });
+        const parts = line.split('|');
+        const path = parts[0].trim();
+        const volumeLabel = parts[1] ? parts[1].trim() : '';
+        const driveLetter = path.slice(0, 2); // e.g. "C:"
+        
+        const name = volumeLabel 
+          ? `${volumeLabel} (${driveLetter})` 
+          : (driveLetter === 'C:' ? `Windows (${driveLetter})` : `ボリューム (${driveLetter})`);
+          
+        drives.push({ name, path: path.endsWith('\\') ? path : path + '\\' });
       }
       resolve(drives);
     });
+
+    const timer = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      child.kill();
+      console.warn('[Drives] getDrives (PS) timed out, falling back to A-Z scan');
+      fallbackScan(drives, resolve);
+    }, timeout);
   });
+}
+
+function fallbackScan(drives: Array<{ name: string; path: string }>, resolve: (d: any) => void) {
+  for (let i = 65; i <= 90; i++) {
+    const letter = String.fromCharCode(i) + ':';
+    const path = letter + '\\';
+    try {
+      if (existsSync(path)) {
+        drives.push({ name: letter === 'C:' ? `Windows (${letter})` : `ボリューム (${letter})`, path });
+      }
+    } catch { /* ignore restricted drives */ }
+  }
+  resolve(drives);
 }
 
 export function getSpecialFolders(): Array<{ name: string; path: string }> {
@@ -64,7 +98,6 @@ export async function getNetworkResources(): Promise<Array<{ name: string; path:
   if (platform() !== 'win32') return [];
   
   return new Promise((resolve) => {
-    const { exec } = require('node:child_process');
     const command = `powershell -NoProfile -Command "$s = New-Object -ComObject Shell.Application; $n = $s.NameSpace(18); if ($n) { $n.Items() | ForEach-Object { if ($_.Path.StartsWith('\\\\')) { \\"$($_.Name)|$($_.Path)\\" } } }"`;
     
     const child = exec(command, (error: any, stdout: string) => {

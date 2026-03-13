@@ -40,28 +40,39 @@ let httpMediaServer: { getMediaUrl: (id: string) => string; close: () => void } 
 
 app.whenReady().then(async () => {
   logger.info('Application starting...');
-  cleanupTempExtract();
-  initArchiveCache(app.getPath('userData'));
+  const userDataPath = app.getPath('userData');
+
+  // 1. Core protocols (Fast)
   registerMediaProtocol(getMediaPathMap());
   registerReederrProtocol();
   registerThumbnailProtocol();
 
-  const thumbnailGenerator = new ThumbnailGenerator(app.getPath('userData'));
-  await thumbnailGenerator.ensureCacheDir();
-  
-  httpMediaServer = await createHttpMediaServer(getMediaPathMap());
-  
-  // Register handlers BEFORE creating the window so they are ready when renderer loads
-  const windowGetter = () => getMainWindow();
-  registerIpcHandlers(windowGetter, httpMediaServer, thumbnailGenerator);
-  
+  // 2. Start background services in parallel
+  const tg = new ThumbnailGenerator(userDataPath);
+  const bgPromise = Promise.all([
+    (async () => {
+      cleanupTempExtract();
+      initArchiveCache(userDataPath);
+    })(),
+    tg.ensureCacheDir(),
+    createHttpMediaServer(getMediaPathMap())
+  ]);
+
+  // 3. Create window IMMEDIATELY to show the UI as fast as possible
   const mainWindow = createWindow();
   buildMenu(mainWindow);
+
+  // 4. Wait for background services and register IPC handlers
+  // Note: We register handlers as soon as services are ready.
+  // If the renderer calls an IPC too early, it will wait for these.
+  const [_, __, hms] = await bgPromise;
+  httpMediaServer = hms;
+  registerIpcHandlers(() => getMainWindow(), hms, tg);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       const win = createWindow();
-      registerIpcHandlers(windowGetter, httpMediaServer, thumbnailGenerator);
+      registerIpcHandlers(() => getMainWindow(), httpMediaServer, tg);
       buildMenu(win);
     }
   });

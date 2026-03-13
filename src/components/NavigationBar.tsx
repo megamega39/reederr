@@ -15,6 +15,7 @@ export const NavigationBar = memo(() => {
         refresh,
         canGoBack,
         canGoForward,
+        canGoUp,
         currentPath,
     } = useViewerStore();
 
@@ -24,11 +25,6 @@ export const NavigationBar = memo(() => {
     const [forwardMenuOpen, setForwardMenuOpen] = useState(false);
     const backBtnRef = useRef<HTMLDivElement>(null);
     const forwardBtnRef = useRef<HTMLDivElement>(null);
-
-    // ルートディレクトリかどうかの簡易判定
-    const isRoot = !currentPath || (
-        !currentPath.includes('/') && !currentPath.includes('\\')
-    ) || currentPath.endsWith('!');
 
     return (
         <div className={styles.navigationBar}>
@@ -73,7 +69,7 @@ export const NavigationBar = memo(() => {
                 <button
                     className={styles.navBtn}
                     onClick={goUp}
-                    disabled={isRoot}
+                    disabled={!canGoUp()}
                     title={`${t('navigation.up')} (Alt+↑)`}
                 >
                     <CornerLeftUp size={20} />

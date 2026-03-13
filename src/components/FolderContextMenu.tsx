@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useViewerStore } from '../stores/viewerStore';
+import { useFavoriteStore } from '../stores/favoriteStore';
 import { FileSystemAPI, SystemAPI } from '../services/api';
 import { useExternalToolStore } from '../stores/externalToolStore';
 import { RenameOverlay } from './RenameOverlay';
 import { useTranslation } from '../i18n';
+import { useShallow } from 'zustand/react/shallow';
 
 export interface FolderContextMenuProps {
   x: number;
@@ -42,9 +43,15 @@ export function FolderContextMenu({
     };
   }, [onClose]);
 
-  const isFav = useViewerStore((s) => s.isFavorite(path));
-  const addFavorite = useViewerStore((s) => s.addFavorite);
-  const removeFavorite = useViewerStore((s) => s.removeFavorite);
+  const { isFavorite, addFavorite, removeFavorite } = useFavoriteStore(
+    useShallow((s) => ({
+      isFavorite: s.isFavorite,
+      addFavorite: s.addFavorite,
+      removeFavorite: s.removeFavorite,
+    }))
+  );
+
+  const isFav = isFavorite(path);
 
   const handleToggleFavorite = () => {
     if (isFav) {
@@ -87,9 +94,9 @@ export function FolderContextMenu({
       return;
     }
     const result = await FileSystemAPI.createFolder(path, name.trim());
-    if (result?.ok) {
+    if (result.ok) {
       window.dispatchEvent(new CustomEvent('folder-created', { detail: { parentPath: path } }));
-    } else if (result?.error) {
+    } else {
       alert(result.error);
     }
     setShowCreateFolderOverlay(false);
@@ -112,9 +119,9 @@ export function FolderContextMenu({
         return;
       }
       const result = await FileSystemAPI.renameFolder(path, newName);
-      if (result?.ok) {
+      if (result.ok) {
         window.dispatchEvent(new CustomEvent('folder-renamed', { detail: { path, newName } }));
-      } else if (result?.error) {
+      } else {
         alert(result.error);
       }
     } catch (err) {
@@ -130,9 +137,9 @@ export function FolderContextMenu({
       return;
     }
     const result = await FileSystemAPI.deleteFolder(path);
-    if (result?.ok) {
+    if (result.ok) {
       window.dispatchEvent(new CustomEvent('folder-deleted', { detail: { path } }));
-    } else if (result?.error) {
+    } else {
       alert(result.error);
     }
     onClose();
@@ -188,8 +195,9 @@ export function FolderContextMenu({
         <div 
           key={tool.id} 
           className="folder-context-menu-item" 
-          onClick={() => {
-            SystemAPI.openWithApp(path, tool.appPath);
+          onClick={async () => {
+            const result = await SystemAPI.openWithApp(path, tool.appPath);
+            if (!result.ok) alert(result.error);
             onClose();
           }}
         >

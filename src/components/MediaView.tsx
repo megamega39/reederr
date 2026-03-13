@@ -1,6 +1,9 @@
 import { useEffect, memo } from 'react';
-import { useViewerStore } from '../stores/viewerStore';
+import { useAppStore } from '../stores/appStore';
+import { useNavigationStore } from '../stores/navigationStore';
+import { useMediaStore } from '../stores/mediaStore';
 import { useLayoutStore } from '../stores/layoutStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
 import { ImageView } from './ImageView';
 import { MediaAPI } from '../services/api';
@@ -8,42 +11,83 @@ import { MediaVideo } from './MediaVideo';
 import { MediaAudio } from './MediaAudio';
 import styles from './MediaView.module.css';
 import { useTranslation } from '../i18n';
+import { useShallow } from 'zustand/react/shallow';
 
 export const MediaView = memo(() => {
   const { t } = useTranslation();
-  const mediaBlobUrl = useViewerStore((s) => s.mediaBlobUrl);
-  const mediaBlobUrls = useViewerStore((s) => s.mediaBlobUrls);
-  const mediaType = useViewerStore((s) => s.mediaType);
-  const selectedEntry = useViewerStore((s) => s.selectedEntry);
-  const getVisibleEntries = useViewerStore((s) => s.getVisibleEntries);
-  const goPrevPage = useViewerStore((s) => s.goPrevPage);
-  const goNextPage = useViewerStore((s) => s.goNextPage);
-  const goNext = useViewerStore((s) => s.goNext);
-  const nextEntry = useViewerStore((s) => s.nextEntry);
-  const setImageDimensions = useViewerStore((s) => s.setImageDimensions);
-  const loadMedia = useViewerStore((s) => s.loadMedia);
-  const viewMode = useLayoutStore((s) => s.viewMode);
-  const binding = useLayoutStore((s) => s.binding);
-  const autoThreshold = useLayoutStore((s) => s.autoThreshold);
-  const selectedPath = useViewerStore((s) => s.selectedPath);
-  const isPreviewFullscreen = useLayoutStore((s) => s.isPreviewFullscreen);
+  
+  const { 
+    mediaBlobUrl, mediaBlobUrls, mediaType, selectedPath, selectedPaths,
+    selectedEntry, goPrevPage, goNextPage, goNext, nextEntry,
+    setImageDimensions, loadMedia
+  } = useMediaStore(
+    useShallow((s) => ({
+      mediaBlobUrl: s.mediaBlobUrl,
+      mediaBlobUrls: s.mediaBlobUrls,
+      mediaType: s.mediaType,
+      selectedPath: s.selectedPath,
+      selectedPaths: s.selectedPaths,
+      selectedEntry: s.selectedEntry,
+      goPrevPage: s.goPrevPage,
+      goNextPage: s.goNextPage,
+      goNext: s.goNext,
+      nextEntry: s.nextEntry,
+      setImageDimensions: s.setImageDimensions,
+      loadMedia: s.loadMedia,
+    }))
+  );
 
-  const loopEnabled = useMediaPlayerStore((s) => s.loopEnabled);
-  const changePlaybackRate = useMediaPlayerStore((s) => s.changePlaybackRate);
-  const resetPlaybackRate = useMediaPlayerStore((s) => s.resetPlaybackRate);
-  const toggleLoop = useMediaPlayerStore((s) => s.toggleLoop);
-  const loadFromStorage = useMediaPlayerStore((s) => s.loadFromStorage);
-  const autoPlay = useMediaPlayerStore((s) => s.autoPlay);
+  const { error, isLoading } = useAppStore(
+    useShallow((s) => ({
+      error: s.error,
+      isLoading: s.isLoading,
+    }))
+  );
 
-  const error = useViewerStore((s) => s.error);
-  const isLoading = useViewerStore((s) => s.isLoading);
+  const { goBack } = useNavigationStore(
+    useShallow((s) => ({
+      goBack: s.goBack,
+    }))
+  );
+
+  // use goBack directly in onClick
+
+  const { viewMode, binding, autoThreshold, autoPlay } = useSettingsStore(
+    useShallow((s) => ({
+      viewMode: s.viewMode,
+      binding: s.binding,
+      autoThreshold: s.autoThreshold,
+      autoPlay: s.autoPlay,
+    }))
+  );
+
+  const { isPreviewFullscreen } = useLayoutStore(
+    useShallow((s) => ({
+      isPreviewFullscreen: s.isPreviewFullscreen,
+    }))
+  );
+
+  const {
+    loopEnabled, toggleLoop, changePlaybackRate, resetPlaybackRate, loadFromStorage
+  } = useMediaPlayerStore(
+    useShallow((s) => ({
+      loopEnabled: s.loopEnabled,
+      toggleLoop: s.toggleLoop,
+      changePlaybackRate: s.changePlaybackRate,
+      resetPlaybackRate: s.resetPlaybackRate,
+      loadFromStorage: s.loadFromStorage,
+    }))
+  );
 
   useEffect(() => {
     loadFromStorage();
   }, [loadFromStorage]);
 
   useEffect(() => {
-    if (mediaType === 'image' && selectedPath) {
+    // We only trigger re-load here for layout-driven changes (like spread mode) 
+    // that might require loading a second image.
+    // Basic navigation is already handled by coordinated store updates in viewerStore.ts.
+    if (mediaType === 'image' && selectedPath && (viewMode !== 'single')) {
       loadMedia(selectedPath);
     }
   }, [viewMode, binding, autoThreshold]);
@@ -100,7 +144,7 @@ export const MediaView = memo(() => {
         <div className={styles.errorMessage}>{error}</div>
         <div className={styles.errorActions}>
           <button className={styles.retryButton} onClick={() => selectedPath && loadMedia(selectedPath)}>{t('common.retry')}</button>
-          <button className={styles.backButton} onClick={() => useViewerStore.getState().goBack()}>{t('common.back')}</button>
+          <button className={styles.backButton} onClick={() => goBack()}>{t('common.back')}</button>
         </div>
       </div>
     );
@@ -129,17 +173,20 @@ export const MediaView = memo(() => {
     if (!loopEnabled && nextEntry()) goNext();
   };
 
-  const visibleEntries = getVisibleEntries();
   const rawSrcs = mediaBlobUrls.length > 0 ? mediaBlobUrls : mediaBlobUrl ? [mediaBlobUrl] : [];
-  const imageSrcs = rawSrcs.slice(0, visibleEntries.length);
-  const imagePaths = visibleEntries.map((e) => e.path);
+  const imagePaths = selectedPaths.length > 0 ? selectedPaths : [selectedPath ?? ''];
+  const imageSrcs = rawSrcs.slice(0, imagePaths.length);
 
   return (
-    <div key={entry?.path ?? 'empty'} className={`${styles.mediaView} ${!entry ? styles.empty : styles[`mediaView--${mediaType}`] || ''}`} onDoubleClick={handleDoubleClick}>
-      {!entry ? (
+    <div 
+      className={`${styles.mediaView} ${!entry ? styles.empty : styles[`mediaView--${mediaType}`] || ''}`} 
+      onDoubleClick={handleDoubleClick}
+    >
+      {!entry || !mediaType ? (
         <div className={styles.placeholder}>{t('media.audioPlaceholder')}</div>
       ) : mediaType === 'audio' ? (
         <MediaAudio
+          key={mediaBlobUrl}
           src={mediaBlobUrl ?? ''}
           name={entry.name}
           autoPlay={autoPlay}
@@ -148,13 +195,14 @@ export const MediaView = memo(() => {
         />
       ) : mediaType === 'video' ? (
         <MediaVideo
+          key={mediaBlobUrl}
           src={mediaBlobUrl ?? ''}
           autoPlay={autoPlay}
           loop={loopEnabled}
           onEnded={handleMediaEnded}
         />
       ) : (
-        <div className="media-image-wrap" key={`image-wrap-${entry.path}`} style={{ width: '100%', height: '100%' }}>
+        <div className="media-image-wrap" style={{ width: '100%', height: '100%' }}>
           <ImageView
             srcs={imageSrcs}
             alt={entry.name}

@@ -13,26 +13,60 @@
   background: var(--win-bg);
   border-bottom: 1px solid var(--border-main);
   font-size: var(--font-size-sm);
-  font-weight: bold;
 }
 
 .colHeader {
-  padding: 4px 8px;
+  padding: 0;
   border-right: 1px solid var(--border-light);
   cursor: pointer;
   user-select: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.colHeaderContent {
+  padding: 4px 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
 }
 
-.colHeader:hover {
+.colHeader:hover .colHeaderContent {
   background: var(--win-bg-light);
   text-decoration: underline;
 }
 
 .colHeader.sorted {
   background: var(--accent-bg-selection-light);
+  font-weight: bold;
+}
+
+.colResizer {
+  position: absolute;
+  right: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 10;
+}
+
+.colResizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+}
+
+.colResizer:hover::after,
+.colResizer.dragging::after {
+  background: var(--accent-color);
 }
 
 .colName { flex: 4; }
@@ -52,8 +86,8 @@
   padding: 0 4px;
   cursor: pointer;
   font-size: var(--font-size-base);
-  min-height: 20px;
-  line-height: 20px;
+  min-height: var(--row-height);
+  line-height: var(--row-height);
   color: var(--text-main);
   white-space: nowrap;
 }
@@ -96,14 +130,30 @@
   color: var(--text-error);
 }
 
-.loadingOverlay,
+.loadingOverlay {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 4px 12px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  color: #fff;
+  font-size: var(--font-size-sm);
+  pointer-events: none;
+  opacity: 1;
+}
+
 .errorOverlay {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(100, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -112,6 +162,8 @@
   color: #fff;
   font-weight: bold;
 }
+
+
 
 .errorOverlay {
   background: rgba(100, 0, 0, 0.6);
@@ -136,7 +188,6 @@
   border-radius: 4px;
   font-weight: bold;
   cursor: pointer;
-  transition: background 0.2s;
 }
 .errorBackButton:hover {
   background: #eee;

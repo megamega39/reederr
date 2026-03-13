@@ -1,12 +1,9 @@
 import { useState } from 'react';
-import { useLayoutStore, saveLayoutToStorage } from '../stores/layoutStore';
-import { useViewerStore } from '../stores/viewerStore';
-import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
-import type { ViewMode, Binding } from '../stores/layoutStore';
+import { useNavigationStore } from '../stores/navigationStore';
+import { useSettingsStore, ViewMode, Binding } from '../stores/settingsStore';
 import { ShortcutSettings } from './ShortcutSettings';
 import { ExternalToolSettings } from './ExternalToolSettings';
 import { useTranslation } from '../i18n';
-import { useShallow } from 'zustand/react/shallow';
 
 interface Props {
     onClose: () => void;
@@ -18,55 +15,29 @@ export function SettingsModal({ onClose }: Props) {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<Tab>('general');
     
-    const { viewMode, binding, autoThreshold, recursiveMedia, setViewMode, setBinding, setAutoThreshold, setRecursiveMedia } = useLayoutStore(
-        useShallow((s) => ({
-            viewMode: s.viewMode,
-            binding: s.binding,
-            autoThreshold: s.autoThreshold,
-            recursiveMedia: s.recursiveMedia,
-            setViewMode: s.setViewMode,
-            setBinding: s.setBinding,
-            setAutoThreshold: s.setAutoThreshold,
-            setRecursiveMedia: s.setRecursiveMedia,
-        }))
-    );
-    
-    const { language, wrapNavigation, currentPath, setLanguage, setWrapNavigation, loadDirectory } = useViewerStore(
-        useShallow((s) => ({
-            language: s.language,
-            wrapNavigation: s.wrapNavigation,
-            currentPath: s.currentPath,
-            setLanguage: s.setLanguage,
-            setWrapNavigation: s.setWrapNavigation,
-            loadDirectory: s.loadDirectory,
-        }))
-    );
-    
-    const { autoPlay, setAutoPlay } = useMediaPlayerStore(
-        useShallow((s) => ({
-            autoPlay: s.autoPlay,
-            setAutoPlay: s.setAutoPlay,
-        }))
-    );
+    const settings = useSettingsStore();
+    const { currentPath, loadDirectory } = useNavigationStore();
 
-    const [localViewMode, setLocalViewMode] = useState<ViewMode>(viewMode);
-    const [localBinding, setLocalBinding] = useState<Binding>(binding);
-    const [localAutoThreshold, setLocalAutoThreshold] = useState(autoThreshold);
-    const [localRecursive, setLocalRecursive] = useState(recursiveMedia);
-    const [localWrap, setLocalWrap] = useState(wrapNavigation);
-    const [localAutoPlay, setLocalAutoPlay] = useState(autoPlay);
-    const [localLanguage, setLocalLanguage] = useState<'ja' | 'en'>(language);
+    const [localViewMode, setLocalViewMode] = useState<ViewMode>(settings.viewMode);
+    const [localBinding, setLocalBinding] = useState<Binding>(settings.binding);
+    const [localAutoThreshold, setLocalAutoThreshold] = useState(settings.autoThreshold);
+    const [localRecursive, setLocalRecursive] = useState(settings.recursiveMedia);
+    const [localWrap, setLocalWrap] = useState(settings.wrapNavigation);
+    const [localAutoPlay, setLocalAutoPlay] = useState(settings.autoPlay);
+    const [localLanguage, setLocalLanguage] = useState(settings.language as 'ja' | 'en');
 
     const handleApply = () => {
-        setViewMode(localViewMode);
-        setBinding(localBinding);
-        setAutoThreshold(localAutoThreshold);
-        setRecursiveMedia(localRecursive);
-        setWrapNavigation(localWrap);
-        setAutoPlay(localAutoPlay);
-        setLanguage(localLanguage);
-        saveLayoutToStorage();
-        if (localRecursive !== recursiveMedia && currentPath) {
+        settings.setViewMode(localViewMode);
+        settings.setBinding(localBinding);
+        settings.setAutoThreshold(localAutoThreshold);
+        settings.setWrapNavigation(localWrap);
+        settings.setAutoPlay(localAutoPlay);
+        settings.setLanguage(localLanguage);
+        
+        const oldRecursive = settings.recursiveMedia;
+        settings.setRecursiveMedia(localRecursive);
+
+        if (localRecursive !== oldRecursive && currentPath) {
             loadDirectory(currentPath, { pushHistory: false });
         }
         onClose();

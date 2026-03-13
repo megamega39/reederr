@@ -1,18 +1,27 @@
 import { useEffect, useRef } from 'react';
-import { useViewerStore, loadViewerFromStorage, saveViewerToStorage } from '../stores/viewerStore';
+import { useNavigationStore } from '../stores/navigationStore';
+import { useMediaStore } from '../stores/mediaStore';
+import { useTreeStore } from '../stores/treeStore';
+import { useAppStore } from '../stores/appStore';
+import { useFavoriteStore } from '../stores/favoriteStore';
+import { loadViewerFromStorage, saveViewerToStorage } from '../stores/viewerStore';
 import { useLayoutStore, loadLayoutFromStorage, saveLayoutToStorage } from '../stores/layoutStore';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
+import { useSettingsStore } from '../stores/settingsStore';
+import { useShallow } from 'zustand/react/shallow';
 
 export function PersistenceManager() {
-  const initTree = useViewerStore((s) => s.initTree);
-  const loadDirectory = useViewerStore((s) => s.loadDirectory);
+  const initTree = useTreeStore((s) => s.initTree);
+  const loadDirectory = useNavigationStore((s) => s.loadDirectory);
 
   const isMounted = useRef(false);
   const initPromise = useRef<Promise<void> | null>(null);
 
-  const viewerHydrated = useViewerStore((s) => s.isHydrated);
+  const viewerHydrated = useAppStore((s) => s.isHydrated);
   const layoutHydrated = useLayoutStore((s) => s.isHydrated);
-  const viewerRestoring = useViewerStore((s) => s.isRestoring);
+  const settingsHydrated = useSettingsStore((s) => s.isHydrated);
+  
+  const viewerRestoring = useAppStore((s) => s.isRestoring);
   const layoutRestoring = useLayoutStore((s) => s.isRestoring);
 
   useEffect(() => {
@@ -20,34 +29,32 @@ export function PersistenceManager() {
     if (initPromise.current) return;
 
     const runInit = async () => {
-      useViewerStore.getState().setRestoring(true);
+      useAppStore.getState().setRestoring(true);
       useLayoutStore.getState().setRestoring(true);
       useMediaPlayerStore.getState().setRestoring(true);
 
       try {
-        await Promise.all([
-          loadLayoutFromStorage(),
-          loadViewerFromStorage(),
-          useMediaPlayerStore.getState().loadFromStorage(),
-        ]);
+        // Load settings first as others might depend on it
+        await useSettingsStore.getState().loadSettings();
+        await loadLayoutFromStorage();
+        await loadViewerFromStorage();
+        await useMediaPlayerStore.getState().loadFromStorage();
 
         await initTree();
 
-        const state = useViewerStore.getState();
-        const savedPath = state.currentPath;
-        const savedSelected = state.selectedPath;
+        const savedPath = useNavigationStore.getState().currentPath;
+        const savedSelected = useMediaStore.getState().selectedPath;
 
         if (savedPath) {
-          console.log('[Persistence] Restoring directory:', savedPath);
           try {
             await loadDirectory(savedPath, {
               pushHistory: false,
-              selectedPath: savedSelected
+              selectedPath: savedSelected ?? undefined
             });
             // Give a moment for tree components to hydrate and listDirectory to settle
             await new Promise(resolve => setTimeout(resolve, 200));
-            await useViewerStore.getState().revealPath(savedPath);
-            await useViewerStore.getState().initExpandedFolders();
+            await useTreeStore.getState().revealPath(savedPath);
+            await useTreeStore.getState().initExpandedFolders();
           } catch (e) {
             console.warn('[Persistence] Directory restoration failed:', e);
           }
@@ -55,7 +62,7 @@ export function PersistenceManager() {
       } catch (e) {
       } finally {
         await new Promise(resolve => setTimeout(resolve, 1000));
-        useViewerStore.getState().setRestoring(false);
+        useAppStore.getState().setRestoring(false);
         useLayoutStore.getState().setRestoring(false);
         useMediaPlayerStore.getState().setRestoring(false);
       }
@@ -65,12 +72,11 @@ export function PersistenceManager() {
   }, [initTree, loadDirectory]);
 
   // Layout save debouncing
-  const layoutState = useLayoutStore();
   const {
-    leftPaneWidth, folderPaneHeight, viewMode, binding, scaleMode, catalogMode,
-    recursiveMedia, fileListSortBy, fileListSortOrder, fileListColumnOrder,
-    fileListColName, fileListColSize, fileListColType, fileListColMtime
-  } = layoutState;
+    leftPaneWidth, folderPaneHeight, fileListSortBy, fileListSortOrder, fileListColumnOrder,
+    fileListColName, fileListColSize, fileListColType, fileListColMtime,
+    activeTreePrefix
+  } = useLayoutStore();
 
   useEffect(() => {
     if (!layoutHydrated || layoutRestoring) return;
@@ -79,17 +85,39 @@ export function PersistenceManager() {
     }, 500);
     return () => clearTimeout(timer);
   }, [
-    layoutHydrated, layoutRestoring, leftPaneWidth, folderPaneHeight, viewMode, binding,
-    scaleMode, catalogMode, recursiveMedia, fileListSortBy, fileListSortOrder,
-    fileListColumnOrder, fileListColName, fileListColSize, fileListColType, fileListColMtime
+    layoutHydrated, layoutRestoring, leftPaneWidth, folderPaneHeight, fileListSortBy, fileListSortOrder,
+    fileListColumnOrder, fileListColName, fileListColSize, fileListColType, fileListColMtime,
+    activeTreePrefix
+  ]);
+
+  // Settings save debouncing
+  const settings = useSettingsStore();
+  const {
+    language, viewMode, binding, autoThreshold, scaleMode,
+    autoSpreadCover, recursiveMedia, wrapNavigation, slideshowInterval, autoPlay
+  } = settings;
+
+  useEffect(() => {
+    if (!settingsHydrated) return;
+    const timer = setTimeout(() => {
+      useSettingsStore.getState().saveSettings();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [
+    settingsHydrated, language, viewMode, binding, autoThreshold, scaleMode,
+    autoSpreadCover, recursiveMedia, wrapNavigation, slideshowInterval, autoPlay
   ]);
 
   // Viewer save debouncing 
-  const currentPath = useViewerStore((s) => s.currentPath);
-  const selectedPath = useViewerStore((s) => s.selectedPath);
-  const history = useViewerStore((s) => s.history);
-  const historyIndex = useViewerStore((s) => s.historyIndex);
-  const favorites = useViewerStore((s) => s.favorites);
+  const { currentPath, selectedPath, history, historyIndex } = useNavigationStore(
+    useShallow((s) => ({
+      currentPath: s.currentPath,
+      selectedPath: useMediaStore.getState().selectedPath,
+      history: s.history,
+      historyIndex: s.historyIndex,
+    }))
+  );
+  const favorites = useFavoriteStore((s) => s.favorites);
 
   useEffect(() => {
     if (!viewerHydrated || viewerRestoring) return;

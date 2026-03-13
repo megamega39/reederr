@@ -2,13 +2,15 @@ import { ipcMain, app, BrowserWindow, dialog, shell, clipboard } from 'electron'
 import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { platform } from 'node:os';
+import { toLongPathIfNeeded } from '../utils/longPath';
+import { spawn, exec } from 'node:child_process';
 import { is7zAvailable } from '../sevenZipPath';
 import { getFileIcon, type IconSize } from '../fileIcon';
 import { splitArchivePath } from '../vfs/utils';
 import { listDirectory, readFile, stat, prefetchArchiveIndex } from '../vfs';
 import { getMediaUrl, disposeMediaIdFromUrl } from '../mediaUrlManager';
 import { loadSettings, saveSettings, loadConfig, saveConfig } from '../settings';
-import { getDrives, getSpecialFolders } from '../drives';
+import { getDrives, getSpecialFolders, getNetworkResources } from '../drives';
 import { buildMenu } from '../menu';
 import { FileWatcher } from '../vfs/watcher';
 import type { ThumbnailGenerator } from '../thumbnails/generator';
@@ -23,21 +25,45 @@ export function registerIpcHandlers(
   ipcMain.handle('is-7z-available', (): boolean => is7zAvailable());
 
   ipcMain.handle(
-    'get-media-url',
-    async (_e, { vpath, preferHttp }: { vpath: string; preferHttp?: boolean }): Promise<string> => {
-      if (!vpath) throw new Error('File not found');
-      const split = splitArchivePath(vpath);
-      const archivePart = split ? split[0] : vpath;
-      if (!existsSync(archivePart)) throw new Error('File not found');
-      const idOrUrl = await getMediaUrl(vpath, { rawId: preferHttp });
-      if (preferHttp && httpMediaServer) {
-        return httpMediaServer.getMediaUrl(idOrUrl);
+    'get-media-urls',
+    async (_e, { vpaths, preferHttp }: { vpaths: string[]; preferHttp?: boolean }): Promise<{ ok: true; value: string[] } | { ok: false; error: string }> => {
+      try {
+        if (!Array.isArray(vpaths)) return { ok: false, error: 'Invalid paths format' };
+        const { getMediaUrls } = await import('../mediaUrlManager');
+        const idsOrUrls = await getMediaUrls(vpaths, { rawId: preferHttp });
+        let res = idsOrUrls;
+        if (preferHttp && httpMediaServer) {
+          res = idsOrUrls.map(id => httpMediaServer.getMediaUrl(id));
+        }
+        return { ok: true, value: res };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
-      return idOrUrl;
+    }
+  );
+
+  ipcMain.handle(
+    'get-media-url',
+    async (_e, { vpath, preferHttp }: { vpath: string; preferHttp?: boolean }): Promise<{ ok: true; value: string } | { ok: false; error: string }> => {
+      try {
+        if (typeof vpath !== 'string' || !vpath) return { ok: false, error: 'Invalid path format or path missing' };
+        const split = splitArchivePath(vpath);
+        const archivePart = split ? split[0] : vpath;
+        if (!existsSync(toLongPathIfNeeded(archivePart))) return { ok: false, error: 'File not found' };
+        const idOrUrl = await getMediaUrl(vpath, { rawId: preferHttp });
+        let res = idOrUrl;
+        if (preferHttp && httpMediaServer) {
+          res = httpMediaServer.getMediaUrl(idOrUrl);
+        }
+        return { ok: true, value: res };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
     }
   );
 
   ipcMain.handle('release-media-url', (_e, { url }: { url: string }): void => {
+    if (typeof url !== 'string') return;
     if (url.startsWith('http://127.0.0.1') && url.includes('?id=')) {
       try {
         const id = new URL(url).searchParams.get('id');
@@ -83,10 +109,13 @@ export function registerIpcHandlers(
     'list-directory',
     async (
       _e,
-      { path, recursive }: { path: string; recursive?: boolean }
+      { path, recursive, skipStats }: { path: string; recursive?: boolean; skipStats?: boolean }
     ) => {
       try {
-        const files = await listDirectory(path, { recursive });
+        if (typeof path !== 'string') {
+          return { ok: false, error: 'Invalid path type: expected string' };
+        }
+        const files = await listDirectory(path, { skipStats });
         
         // Background prefetch for archives in the current directory
         if (Array.isArray(files) && !recursive) {
@@ -97,11 +126,11 @@ export function registerIpcHandlers(
           });
         }
 
-        return { success: true, files: Array.isArray(files) ? files : [] };
+        return { ok: true, value: Array.isArray(files) ? files : [] };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[list-directory] Error:', msg);
-        return { success: false, error: msg, files: [] };
+        return { ok: false, error: msg };
       }
     }
   );
@@ -109,6 +138,7 @@ export function registerIpcHandlers(
   ipcMain.handle(
     'read-file',
     async (_e, { path }: { path: string }): Promise<ArrayBuffer> => {
+      if (typeof path !== 'string') throw new Error('Invalid path format');
       return readFile(path);
     }
   );
@@ -116,6 +146,7 @@ export function registerIpcHandlers(
   ipcMain.handle(
     'stat',
     async (_e, { path }: { path: string }) => {
+      if (typeof path !== 'string') return null;
       return stat(path);
     }
   );
@@ -155,13 +186,10 @@ export function registerIpcHandlers(
 
   ipcMain.handle('get-special-folders', () => getSpecialFolders());
   ipcMain.handle('get-drives', () => getDrives());
-  ipcMain.handle('get-network-resources', () => {
-    const { getNetworkResources } = require('../drives');
-    return getNetworkResources();
-  });
+  ipcMain.handle('get-network-resources', () => getNetworkResources());
 
   ipcMain.handle('open-in-explorer', async (_e, { path: folderPath }: { path: string }): Promise<void> => {
-    if (folderPath && existsSync(folderPath)) {
+    if (folderPath && existsSync(toLongPathIfNeeded(folderPath))) {
       await shell.openPath(folderPath);
     }
   });
@@ -175,9 +203,8 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle('show-in-explorer', async (_e, { path: folderPath }: { path: string }): Promise<void> => {
-    if (!folderPath || !existsSync(folderPath)) return;
+    if (!folderPath || !existsSync(toLongPathIfNeeded(folderPath))) return;
     if (platform() === 'win32') {
-      const { exec } = await import('child_process');
       exec(`explorer.exe /select,"${folderPath.replace(/"/g, '""')}"`, () => { });
     } else {
       await shell.openPath(folderPath);
@@ -186,53 +213,53 @@ export function registerIpcHandlers(
 
   ipcMain.handle(
     'create-folder',
-    async (_e, { parentPath, name }: { parentPath: string; name: string }): Promise<{ ok: boolean; error?: string }> => {
+    async (_e, { parentPath, name }: { parentPath: string; name: string }): Promise<{ ok: true; value: void } | { ok: false; error: string }> => {
       try {
         const newPath = join(parentPath, name);
-        if (existsSync(newPath)) return { ok: false, error: '同じ名前のフォルダが既に存在します' };
+        if (existsSync(toLongPathIfNeeded(newPath))) return { ok: false, error: '同じ名前のフォルダが既に存在します' };
         mkdirSync(newPath, { recursive: true });
-        return { ok: true };
+        return { ok: true, value: undefined };
       } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     }
   );
 
-  ipcMain.handle('rename-folder', async (_e, { path: oldPath, newName }: { path: string; newName: string }): Promise<{ ok: boolean; error?: string }> => {
+  ipcMain.handle('rename-folder', async (_e, { path: oldPath, newName }: { path: string; newName: string }): Promise<{ ok: true; value: void } | { ok: false; error: string }> => {
     try {
       const newPath = join(dirname(oldPath), newName);
-      if (existsSync(newPath)) return { ok: false, error: '同じ名前が既に存在します' };
+      if (existsSync(toLongPathIfNeeded(newPath))) return { ok: false, error: '同じ名前が既に存在します' };
       renameSync(oldPath, newPath);
-      return { ok: true };
+      return { ok: true, value: undefined };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   });
 
-  ipcMain.handle('delete-folder', async (_e, { path: folderPath }: { path: string }): Promise<{ ok: boolean; error?: string }> => {
+  ipcMain.handle('delete-folder', async (_e, { path: folderPath }: { path: string }): Promise<{ ok: true; value: void } | { ok: false; error: string }> => {
     try {
       await shell.trashItem(folderPath);
-      return { ok: true };
+      return { ok: true, value: undefined };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   });
 
-  ipcMain.handle('rename-file', async (_e, { path: oldPath, newName }: { path: string; newName: string }): Promise<{ ok: boolean; error?: string }> => {
+  ipcMain.handle('rename-file', async (_e, { path: oldPath, newName }: { path: string; newName: string }): Promise<{ ok: true; value: void } | { ok: false; error: string }> => {
     try {
       const newPath = join(dirname(oldPath), newName);
-      if (existsSync(newPath)) return { ok: false, error: '同じ名前が既に存在します' };
+      if (existsSync(toLongPathIfNeeded(newPath))) return { ok: false, error: '同じ名前が既に存在します' };
       renameSync(oldPath, newPath);
-      return { ok: true };
+      return { ok: true, value: undefined };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   });
 
-  ipcMain.handle('delete-file', async (_e, { path: filePath }: { path: string }): Promise<{ ok: boolean; error?: string }> => {
+  ipcMain.handle('delete-file', async (_e, { path: filePath }: { path: string }): Promise<{ ok: true; value: void } | { ok: false; error: string }> => {
     try {
       await shell.trashItem(filePath);
-      return { ok: true };
+      return { ok: true, value: undefined };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -240,18 +267,15 @@ export function registerIpcHandlers(
 
   ipcMain.handle(
     'open-with-app',
-    async (_e, { path, appPath }: { path: string; appPath: string }): Promise<{ ok: boolean; error?: string }> => {
+    async (_e, { path, appPath }: { path: string; appPath: string }): Promise<{ ok: true; value: void } | { ok: false; error: string }> => {
       try {
-        const { spawn } = await import('child_process');
-        // On Windows, if the path contains spaces, it needs proper quoting.
-        // spawn handles most of this but we use shell: true for better compatibility with some apps
         const child = spawn(appPath, [path], {
           detached: true,
           stdio: 'ignore',
           shell: true,
         });
         child.unref();
-        return { ok: true };
+        return { ok: true, value: undefined };
       } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }

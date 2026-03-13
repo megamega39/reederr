@@ -23,6 +23,14 @@ export function MediaAudio({ src, name, autoPlay, loop, onEnded }: Props) {
         if ('webkitPreservesPitch' in el) (el as any).webkitPreservesPitch = preservesPitch;
     }, [loop, playbackRate, preservesPitch, src]);
 
+    useEffect(() => {
+        return () => {
+            if (src && (src.startsWith('media://') || (src.includes('127.0.0.1') && src.includes('id=')))) {
+                (window as any).reederr.releaseMediaUrl(src).catch(() => {});
+            }
+        };
+    }, [src]);
+
     return (
         <div className={styles.audioWrap}>
             <audio

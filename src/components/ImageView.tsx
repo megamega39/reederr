@@ -16,38 +16,30 @@ export const ImageView = memo(({ srcs, alt, onDimensions, paths }: ImageViewProp
 
   return (
     <div className={`image-view image-view--${isSpread ? 'spread' : 'single'} scale-${scaleMode}`}>
-      {validSrcs.length === 0 ? (
-        <div className="image-view-loading">
-          <span>読み込み中...</span>
-        </div>
-      ) : (
-        validSrcs.map((src, i) => {
-          const path = paths?.[i] || src;
-          // React needs a highly unique key to avoid DOM recycling crashes (removeChild error)
-          const uniqueKey = `${path}-${src}`;
-          return (
-            <div key={uniqueKey} className="image-view-page">
-              <img
-                key={`img-${uniqueKey}`}
-                src={src}
-                alt={alt}
-                className="image-view-img"
-                onLoad={(e) => {
-                  const img = e.currentTarget;
-                  const w = img.naturalWidth;
-                  const h = img.naturalHeight;
-                  if (paths?.[i] && onDimensions && w > 0 && h > 0) {
-                    onDimensions(paths[i], w, h);
-                  }
-                }}
-                onError={() => {
-                  console.error(`[ImageView] Failed to load image: ${path} (src: ${src})`);
-                }}
-              />
-            </div>
-          );
-        })
-      )}
+      {validSrcs.map((src, i) => {
+        const path = paths?.[i] || src;
+        // Use index as key to ensure DOM is reused during src changes, preventing flicker
+        return (
+          <div key={i} className="image-view-page">
+            <img
+              src={src}
+              alt={alt}
+              className="image-view-img"
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                const w = img.naturalWidth;
+                const h = img.naturalHeight;
+                if (paths?.[i] && onDimensions && w > 0 && h > 0) {
+                  onDimensions(paths[i], w, h);
+                }
+              }}
+              onError={() => {
+                console.error(`[ImageView] Failed to load image: ${path} (src: ${src})`);
+              }}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 });

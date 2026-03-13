@@ -3,11 +3,42 @@ import { extractToTemp } from './vfs/sevenZip';
 import { splitArchivePath } from './vfs/utils';
 import { tempManager } from './vfs/tempManager';
 import { VIDEO_EXT, AUDIO_EXT } from './vfs/constants';
+import { toLongPathIfNeeded } from './utils/longPath';
 
 const MEDIA_ID_PREFIX = 'm';
 let mediaIdCounter = 0;
 const mediaPathMap = new Map<string, string>();
 const idToTempPath = new Map<string, string>();
+
+// Simple queue for archive extractions to prevent concurrent extractions to the same subdir
+const extractionQueues = new Map<string, Promise<any>>();
+
+async function enqueueExtraction<T>(archivePath: string, task: () => Promise<T>): Promise<T> {
+  const EXTRACTION_TIMEOUT_MS = 60_000;
+  const previous = extractionQueues.get(archivePath) || Promise.resolve();
+  
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Extraction timed out for ${archivePath} after ${EXTRACTION_TIMEOUT_MS}ms`)), EXTRACTION_TIMEOUT_MS);
+  });
+
+  const next = (async () => {
+    try {
+      await previous;
+    } catch {
+      // ignore
+    }
+    return Promise.race([task(), timeoutPromise]);
+  })();
+  
+  extractionQueues.set(archivePath, next);
+  try {
+    return await next;
+  } finally {
+    if (extractionQueues.get(archivePath) === next) {
+      extractionQueues.delete(archivePath);
+    }
+  }
+}
 
 function isRarArchive(path: string): boolean {
   const lower = path.toLowerCase();
@@ -24,7 +55,8 @@ export function getMediaPathMap(): Map<string, string> {
 }
 
 export function registerMediaPath(realPath: string, isTemp = false): string {
-  if (!existsSync(realPath)) {
+  const checkPath = toLongPathIfNeeded(realPath);
+  if (!existsSync(checkPath)) {
     throw new Error(`File not found: ${realPath}`);
   }
   const id = `${MEDIA_ID_PREFIX}${++mediaIdCounter}-${Date.now()}`;
@@ -35,52 +67,77 @@ export function registerMediaPath(realPath: string, isTemp = false): string {
   return id;
 }
 
+export async function getMediaUrls(
+  vpaths: string[],
+  _options?: { rawId?: boolean }
+): Promise<string[]> {
+  if (vpaths.length === 0) return [];
+  
+  // Group by archive to batch extract
+  const archiveGroups = new Map<string, string[]>();
+  const physicalPaths: string[] = [];
+  const results = new Array(vpaths.length).fill('');
+
+  vpaths.forEach((v, i) => {
+    const split = splitArchivePath(v);
+    if (split) {
+      const archivePath = split[0];
+      const innerPath = split[1];
+      if (!archiveGroups.has(archivePath)) archiveGroups.set(archivePath, []);
+      archiveGroups.get(archivePath)!.push(innerPath);
+    } else {
+      physicalPaths.push(v);
+    }
+  });
+
+  // Handle archives in batches
+  for (const [archivePath, innerPaths] of archiveGroups.entries()) {
+    const subDir = tempManager.getTempDirForEntry(archivePath, innerPaths[0]); // Use first as anchor
+
+    // Use our queue to prevent concurrent extraction for the same archive
+    const extractedPaths = await enqueueExtraction(archivePath, async () => {
+       const { extractMultipleToTemp } = await import('./vfs/sevenZip');
+       try {
+         return await extractMultipleToTemp(archivePath, innerPaths, subDir);
+       } catch (err) {
+         console.error(`[mediaUrlManager] Batch extraction failed for ${archivePath}:`, err);
+         throw err;
+       }
+    });
+    
+    innerPaths.forEach((inner, idx) => {
+      const vpath = `${archivePath}!${inner}`;
+      const realPath = extractedPaths[idx];
+      if (!realPath) return; // Skip failed extractions
+
+      const cacheKey = `media:${archivePath}!${inner}`;
+      tempManager.registerFile(cacheKey, realPath);
+      const id = registerMediaPath(realPath, true);
+      
+      // Find where this vpath was in the original request
+      vpaths.forEach((orig, origIdx) => {
+        if (orig === vpath) results[origIdx] = _options?.rawId ? id : `media://${id}`;
+      });
+    });
+  }
+
+  // Handle physical paths
+  physicalPaths.forEach(v => {
+    const id = registerMediaPath(v, false);
+    vpaths.forEach((orig, origIdx) => {
+      if (orig === v) results[origIdx] = _options?.rawId ? id : `media://${id}`;
+    });
+  });
+
+  return results;
+}
+
 export async function getMediaUrl(
   vpath: string,
   _options?: { rawId?: boolean }
 ): Promise<string> {
-  const split = splitArchivePath(vpath);
-  if (split) {
-    const archivePath = split[0];
-    const innerPath = split[1];
-    if (!archivePath || !innerPath || !existsSync(archivePath)) {
-      throw new Error('Archive or path not found');
-    }
-
-    const cacheKey = `media:${archivePath}!${innerPath}`;
-    const cachedPath = tempManager.getFile(cacheKey);
-    if (cachedPath) {
-      const id = registerMediaPath(cachedPath, true);
-      return _options?.rawId ? id : `media://${id}`;
-    }
-
-    const lowerInner = innerPath.toLowerCase();
-    const isVideo = [...VIDEO_EXT].some(ext => lowerInner.endsWith(ext));
-    const isAudio = [...AUDIO_EXT].some(ext => lowerInner.endsWith(ext));
-
-    // 動画以外は VFS ストリーミングを優先（ただし ZIP/RAR のみ）
-    // RAR は現状ストリーミング未対応なので除外
-    if (!isVideo && isZipArchive(archivePath)) {
-      const id = `${MEDIA_ID_PREFIX}v${++mediaIdCounter}-${Date.now()}`;
-      mediaPathMap.set(id, vpath); // Virtual path (with !)
-      return _options?.rawId ? id : `media://${id}`;
-    }
-
-    // 動画/音声、またはストリーミング非対応のアーカイブは一時フォルダに展開して配信
-    const { isArchiveExtension } = await import('./vfs/utils');
-    if (isVideo || isAudio || isArchiveExtension(archivePath)) {
-      const subDir = tempManager.getTempDirForEntry(archivePath, innerPath);
-      const extractedPath = await extractToTemp(archivePath, innerPath, subDir);
-      
-      tempManager.registerFile(cacheKey, extractedPath);
-      const id = registerMediaPath(extractedPath, true);
-      return _options?.rawId ? id : `media://${id}`;
-    }
-  }
-
-  if (!existsSync(vpath)) throw new Error('File not found');
-  const id = registerMediaPath(vpath, false);
-  return _options?.rawId ? id : `media://${id}`;
+  const urls = await getMediaUrls([vpath], _options);
+  return urls[0];
 }
 
 export function disposeMediaIdFromUrl(url: string): void {

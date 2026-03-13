@@ -1,14 +1,16 @@
 import { useEffect } from 'react';
-import { useViewerStore } from '../stores/viewerStore';
-import { useLayoutStore } from '../stores/layoutStore';
+import { useNavigationStore } from '../stores/navigationStore';
+import { useMediaStore } from '../stores/mediaStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { useShortcutStore, ShortcutAction } from '../stores/shortcutStore';
 
 export function useGlobalKeyboardShortcuts(
   handleToggleFullscreen: () => void,
   handleToggleHelp: () => void
 ) {
-  const viewer = useViewerStore();
-  const layout = useLayoutStore();
+  const nav = useNavigationStore();
+  const media = useMediaStore();
+  const settings = useSettingsStore();
   const { shortcuts } = useShortcutStore();
 
   useEffect(() => {
@@ -46,29 +48,30 @@ export function useGlobalKeyboardShortcuts(
       e.preventDefault();
 
       switch (foundAction) {
-        case 'prevPage': viewer.goPrevPage(); break;
-        case 'nextPage': viewer.goNextPage(); break;
-        case 'prevFolder': viewer.prevFolder(); break;
-        case 'nextFolder': viewer.nextFolder(); break;
-        case 'firstPage': viewer.goToFirst(); break;
-        case 'lastPage': viewer.goToLast(); break;
-        case 'goUp': viewer.goUp(); break;
-        case 'goBack': viewer.goBack(); break;
-        case 'goForward': viewer.goForward(); break;
-        case 'viewModeSingle': layout.setViewMode('single'); break;
-        case 'viewModeSpread': layout.setViewMode('spread'); break;
-        case 'viewModeAuto': layout.setViewMode('auto'); break;
+        case 'prevPage': media.goPrevPage(); break;
+        case 'nextPage': media.goNextPage(); break;
+        case 'prevFolder': nav.prevFolder(); break;
+        case 'nextFolder': nav.nextFolder(); break;
+        case 'firstPage': media.goToFirst(); break;
+        case 'lastPage': media.goToLast(); break;
+        case 'goUp': nav.goUp(); break;
+        case 'goBack': nav.goBack(); break;
+        case 'goForward': nav.goForward(); break;
+        case 'viewModeSingle': settings.setViewMode('single'); break;
+        case 'viewModeSpread': settings.setViewMode('spread'); break;
+        case 'viewModeAuto': settings.setViewMode('auto'); break;
         case 'viewModeToggle': 
-          layout.setViewMode(layout.viewMode === 'single' ? 'spread' : 'single'); 
+          settings.setViewMode(settings.viewMode === 'single' ? 'spread' : 'single'); 
           break;
         case 'toggleBinding': 
-          layout.setBinding(layout.binding === 'rtl' ? 'ltr' : 'rtl'); 
+          settings.setBinding(settings.binding === 'rtl' ? 'ltr' : 'rtl'); 
           break;
-        case 'setBindingLTR': layout.setBinding('ltr'); break;
-        case 'setBindingRTL': layout.setBinding('rtl'); break;
+        case 'setBindingLTR': settings.setBinding('ltr'); break;
+        case 'setBindingRTL': settings.setBinding('rtl'); break;
         case 'toggleFullscreen': handleToggleFullscreen(); break;
-        case 'toggleSlideshow': viewer.setSlideshowActive(!viewer.slideshowActive); break;
+        case 'toggleSlideshow': media.setSlideshowActive(!media.slideshowActive); break;
         // Zoom and others might need implementation in layoutStore or similar
+        // TODO: Implement zoom logic in layoutStore (needs coordination with Renderer/CSS Zoom)
         case 'zoomIn': /* zoom in logic */ break;
         case 'zoomOut': /* zoom out logic */ break;
         case 'zoomReset': /* zoom reset logic */ break;
@@ -78,9 +81,11 @@ export function useGlobalKeyboardShortcuts(
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [
-    viewer,
-    layout,
+    nav,
+    media,
+    settings,
     shortcuts,
-    handleToggleFullscreen
+    handleToggleFullscreen,
+    handleToggleHelp
   ]);
 }

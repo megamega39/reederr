@@ -24,9 +24,11 @@
   --text-error: #cc0000;
   
   /* Fonts */
-  --font-family: 'MS UI Gothic', sans-serif;
+  --font-family: 'MS UI Gothic', 'ＭＳ ＵＩゴシック', sans-serif;
   --font-size-base: 12px;
-  --font-size-sm: 11px;
+  --font-size-sm: 10px;
+  
+  --row-height: 18px;
   
   /* Layout */
   --sidebar-width: 250px;
@@ -36,6 +38,8 @@
 
 * {
   box-sizing: border-box;
+  transition: none !important;
+  animation: none !important;
 }
 
 html,
@@ -44,9 +48,11 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: 'MS UI Gothic', sans-serif;
-  font-size: 12px;
-  -webkit-font-smoothing: none;
+  font-family: 'MS UI Gothic', 'ＭＳ ＵＩゴシック', sans-serif;
+  font-size: var(--font-size-base);
+  -webkit-font-smoothing: none !important;
+  text-rendering: optimizeSpeed; /* Best for pixel preservation at small sizes */
+  letter-spacing: 0px;
   color: #000;
 }
 
@@ -303,7 +309,7 @@ body,
 
 .resizable-divider-line {
   opacity: 0;
-  transition: opacity 0.1s;
+  opacity: 0;
 }
 
 .resizable-divider:hover .resizable-divider-line,
@@ -379,9 +385,9 @@ body,
   cursor: pointer;
   white-space: nowrap;
   gap: 3px;
-  min-height: 20px;
-  line-height: 20px;
-  font-size: 12px;
+  min-height: var(--row-height);
+  line-height: var(--row-height);
+  font-size: var(--font-size-base);
   color: #000;
 }
 
@@ -578,7 +584,7 @@ body,
   left: 3px;
   width: 2px;
   background: transparent;
-  transition: background 0.15s;
+  background: transparent;
 }
 
 .file-list-col-resizer:hover::after,
@@ -1248,7 +1254,7 @@ body,
   background: rgba(255, 255, 255, 0.5);
   border: 1px solid rgba(0, 0, 0, 0.05);
   border-radius: 8px;
-  transition: all 0.2s ease;
+  border-radius: 8px;
 }
 
 .shortcut-item:hover {
@@ -1326,14 +1332,10 @@ body,
   color: #fff;
   border-style: solid;
   border-color: var(--primary-color, #2196f3);
-  animation: pulse 1.5s infinite;
+  border-color: var(--primary-color, #2196f3);
 }
 
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
-}
+
 
 .shortcut-recording-overlay {
   position: fixed;
@@ -1440,7 +1442,7 @@ body,
   background: rgba(255, 255, 255, 0.03);
   padding: 10px 15px;
   border-radius: 8px;
-  transition: background 0.2s;
+  border-radius: 8px;
 }
 
 .tool-item:hover {
@@ -1472,7 +1474,7 @@ body,
   cursor: pointer;
   padding: 5px;
   border-radius: 4px;
-  transition: all 0.2s;
+  border-radius: 4px;
 }
 
 .tool-remove-btn:hover {
@@ -1493,7 +1495,7 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: fadeIn 0.15s ease-out;
+  justify-content: center;
 }
 
 .rename-overlay-modal {
@@ -1543,7 +1545,7 @@ body,
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  cursor: pointer;
 }
 
 .rename-overlay-btn--cancel {
@@ -1570,10 +1572,7 @@ body,
   cursor: not-allowed;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(1.05); }
-  to { opacity: 1; transform: scale(1); }
-}
+
 
 /* Inline Rename Input */
 .file-list-rename-input {

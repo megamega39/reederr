@@ -12,3 +12,8 @@ export interface FileStats {
   isDirectory: boolean;
   mtime?: number;
 }
+export interface ListDirectoryOptions {
+  onChunk?: (files: DirectoryEntry[]) => void;
+  skipStats?: boolean;
+  recursive?: boolean;
+}

@@ -10,5 +10,5 @@ export interface DirectoryEntry {
 export interface HistoryEntry {
   path: string;
   name: string;
-  type: 'folder' | 'archive' | 'pc' | 'other';
+  type: 'folder' | 'archive' | 'pc' | 'network' | 'other';
 }

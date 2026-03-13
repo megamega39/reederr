@@ -1,43 +1,52 @@
-import { useMemo, useState, useCallback, useEffect, useRef, Fragment } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef, Fragment, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useViewerStore } from '../stores/viewerStore';
+import { useAppStore } from '../stores/appStore';
+import { useNavigationStore } from '../stores/navigationStore';
+import { useMediaStore } from '../stores/mediaStore';
 import { useLayoutStore, saveLayoutToStorage } from '../stores/layoutStore';
 import type { FileListSortBy, FileListColumnId } from '../stores/layoutStore';
-import { normalizePath } from '../stores/viewerStore.utils';
+import { formatSize, formatMtime, getFileType } from '../utils/fileUtils';
+import { normalizePath, getParentPath } from '../stores/viewerStore.utils';
 import { FileIcon } from './FileIcon';
 import styles from './FileList.module.css';
 import { FileContextMenu } from './FileContextMenu';
 import { FolderContextMenu } from './FolderContextMenu';
 import type { DirectoryEntry } from '../types';
-import { formatSize, formatMtime, getFileType, getParentPath } from '../utils/fileUtils';
 import { ColumnResizer } from './ColumnResizer';
 import { useFileSorting } from '../hooks/useFileSorting';
 import { FileSystemAPI } from '../services/api';
 import { useTranslation } from '../i18n';
-
 import { useShallow } from 'zustand/react/shallow';
 import { FileGridView } from './FileGridView';
 
 export function FileList() {
   const { t } = useTranslation();
-  const { entries, error, selectedPath, selectedPaths, isLoading, fileListFilter } = useViewerStore(
+  
+  const { entries, error, isLoading, loadDirectory, currentPath, goBack } = useNavigationStore(
     useShallow((s) => ({
-      entries: s.entries ?? [],
+      entries: s.entries,
       error: s.error,
-      selectedPath: s.selectedPath,
-      selectedPaths: s.selectedPaths,
       isLoading: s.isLoading,
-      fileListFilter: s.fileListFilter,
+      loadDirectory: s.loadDirectory,
+      currentPath: s.currentPath,
+      goBack: s.goBack,
     }))
   );
 
-  const { setSelectedPath, setSelectedPaths, loadMedia, loadDirectory, setFileListFilter } = useViewerStore(
+  const { fileListFilter, setFileListFilter } = useAppStore(
     useShallow((s) => ({
+      fileListFilter: s.fileListFilter,
+      setFileListFilter: s.setFileListFilter,
+    }))
+  );
+
+  const { selectedPath, selectedPaths, setSelectedPath, setSelectedPaths, loadMedia } = useMediaStore(
+    useShallow((s) => ({
+      selectedPath: s.selectedPath,
+      selectedPaths: s.selectedPaths,
       setSelectedPath: s.setSelectedPath,
       setSelectedPaths: s.setSelectedPaths,
       loadMedia: s.loadMedia,
-      loadDirectory: s.loadDirectory,
-      setFileListFilter: s.setFileListFilter,
     }))
   );
 
@@ -74,11 +83,23 @@ export function FileList() {
   const virtualizer = useVirtualizer({
     count: sortedEntries.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 20, // .file-list-item height is 20px
+    estimateSize: () => 18, // Compact row height
     overscan: 20,
   });
 
   const lastSelectedIndex = useRef<number>(-1);
+
+  // UX: Delay showing the "Loading" overlay to avoid flickering on fast operations (I/O)
+  const [showLoading, setShowLoading] = useState(false);
+  useEffect(() => {
+    let timer: any;
+    if (isLoading) {
+      timer = setTimeout(() => setShowLoading(true), 800);
+    } else {
+      setShowLoading(false);
+    }
+    return () => clearTimeout(timer);
+  }, [isLoading]);
 
   // Auto-scroll to selected items (ensures the primary highlighted item is visible)
   useEffect(() => {
@@ -182,7 +203,6 @@ export function FileList() {
     }
   };
 
-  const currentPath = useViewerStore((s) => s.currentPath);
   const isVirtual = currentPath?.includes('!') ?? false;
   const [editingPath, setEditingPath] = useState<string | null>(null);
 
@@ -351,7 +371,7 @@ export function FileList() {
           </div>
 
           <div className={styles.content} ref={parentRef}>
-            {isLoading && <div className={styles.loadingOverlay}>{t('common.loading')}</div>}
+            {showLoading && <div className={styles.loadingOverlay}>{t('common.loading')}...</div>}
             {error && (
               <div className={styles.errorOverlay} role="alert">
                 <div className={styles.errorContent}>
@@ -360,7 +380,7 @@ export function FileList() {
                     className={styles.errorBackButton} 
                     onClick={(e) => {
                       e.stopPropagation();
-                      useViewerStore.getState().goBack();
+                      goBack();
                     }}
                   >
                     {t('common.back')}
@@ -381,81 +401,22 @@ export function FileList() {
                 const e = sortedEntries[virtualItem.index];
                 if (!e) return null;
                 return (
-                  <div
+                  <FileListItem
                     key={virtualItem.key}
-                    data-path={e.path}
-                    className={`${styles.item} ${selectedPaths.some(p => normalizePath(p) === normalizePath(e.path)) ? styles.selected : ''} ${e.isArchive ? styles.itemArchive : ''}`}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      height: `${virtualItem.size}px`,
-                      transform: `translateY(${virtualItem.start}px)`,
-                    }}
-                    onClick={(ev) => handleSelect(e, ev)}
-                    onDoubleClick={() => handleDoubleClick(e)}
-                    onContextMenu={(ev) => handleContextMenu(ev, e)}
-                    onMouseEnter={(ev) => setHoveredItem(e.path, { x: ev.clientX, y: ev.clientY })}
-                    onMouseLeave={() => setHoveredItem(null)}
-                  >
-                    <span className={styles.itemColIcon}>
-                      <FileIcon path={e.path} isDirectory={e.isDirectory} size={16} />
-                    </span>
-                    {columnOrder.map((colId) => {
-                      const w = colWidthMap[colId];
-                      return (
-                        <span
-                          key={colId}
-                          className={styles.itemCol}
-                          style={{ width: w, minWidth: w }}
-                        >
-                          {colId === 'name' ? (
-                            editingPath === e.path ? (
-                              <input
-                                type="text"
-                                className={styles.renameInput}
-                                defaultValue={e.name ?? '-'}
-                                autoFocus
-                                onClick={(ev) => ev.stopPropagation()}
-                                onDoubleClick={(ev) => ev.stopPropagation()}
-                                onFocus={(ev) => {
-                                  const input = ev.target;
-                                  const val = input.value;
-                                  if (!e.isDirectory) {
-                                    const lastDot = val.lastIndexOf('.');
-                                    if (lastDot > 0) {
-                                      input.setSelectionRange(0, lastDot);
-                                      return;
-                                    }
-                                  }
-                                  input.select();
-                                }}
-                                onKeyDown={(ev) => {
-                                  if (ev.key === 'Enter') {
-                                    ev.preventDefault();
-                                    handleRenameSave(e.path, ev.currentTarget.value.trim(), e.isDirectory);
-                                  } else if (ev.key === 'Escape') {
-                                    ev.preventDefault();
-                                    setEditingPath(null);
-                                  }
-                                }}
-                                onBlur={(ev) => handleRenameSave(e.path, ev.target.value.trim(), e.isDirectory)}
-                              />
-                            ) : (
-                              e?.name ?? '-'
-                            )
-                          ) : colId === 'size' ? (
-                            e?.isDirectory ? '' : formatSize(e?.size)
-                          ) : colId === 'type' ? (
-                            getFileType(e, t)
-                          ) : colId === 'mtime' ? (
-                            formatMtime(e?.mtime)
-                          ) : null}
-                        </span>
-                      );
-                    })}
-                  </div>
+                    virtualItem={virtualItem}
+                    entry={e}
+                    isSelected={selectedPaths.some(p => normalizePath(p) === normalizePath(e.path))}
+                    editingPath={editingPath}
+                    columnOrder={columnOrder}
+                    colWidthMap={colWidthMap}
+                    isVirtual={isVirtual}
+                    onSelect={handleSelect}
+                    onDoubleClick={handleDoubleClick}
+                    onContextMenu={handleContextMenu}
+                    onRenameSave={handleRenameSave}
+                    onSetEditingPath={setEditingPath}
+                    onHover={setHoveredItem}
+                  />
                 );
               })}
             </div>
@@ -517,3 +478,109 @@ export function FileList() {
     </div>
   );
 }
+const FileListItem = memo(({
+  virtualItem,
+  entry,
+  isSelected,
+  editingPath,
+  columnOrder,
+  colWidthMap,
+  onSelect,
+  onDoubleClick,
+  onContextMenu,
+  onRenameSave,
+  onSetEditingPath,
+  onHover,
+}: {
+  virtualItem: any;
+  entry: DirectoryEntry;
+  isSelected: boolean;
+  editingPath: string | null;
+  columnOrder: FileListColumnId[];
+  colWidthMap: Record<string, number>;
+  onSelect: (e: DirectoryEntry, ev: React.MouseEvent) => void;
+  onDoubleClick: (e: DirectoryEntry) => void;
+  onContextMenu: (ev: React.MouseEvent, e: DirectoryEntry) => void;
+  onRenameSave: (oldPath: string, newName: string, isDir: boolean) => void;
+  onSetEditingPath: (path: string | null) => void;
+  onHover: (path: string | null, pos?: { x: number; y: number }) => void;
+}) => {
+  const { t } = useTranslation();
+  
+  return (
+    <div
+      data-path={entry.path}
+      className={`${styles.item} ${isSelected ? styles.selected : ''} ${entry.isArchive ? styles.itemArchive : ''}`}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: `${virtualItem.size}px`,
+        transform: `translateY(${virtualItem.start}px)`,
+      }}
+      onClick={(ev) => onSelect(entry, ev)}
+      onDoubleClick={() => onDoubleClick(entry)}
+      onContextMenu={(ev) => onContextMenu(ev, entry)}
+      onMouseEnter={(ev) => onHover(entry.path, { x: ev.clientX, y: ev.clientY })}
+      onMouseLeave={() => onHover(null)}
+    >
+      <span className={styles.itemColIcon}>
+        <FileIcon path={entry.path} isDirectory={entry.isDirectory} size={16} />
+      </span>
+      {columnOrder.map((colId) => {
+        const w = colWidthMap[colId];
+        return (
+          <span
+            key={colId}
+            className={styles.itemCol}
+            style={{ width: w, minWidth: w }}
+          >
+            {colId === 'name' ? (
+              editingPath === entry.path ? (
+                <input
+                  type="text"
+                  className={styles.renameInput}
+                  defaultValue={entry.name ?? '-'}
+                  autoFocus
+                  onClick={(ev) => ev.stopPropagation()}
+                  onDoubleClick={(ev) => ev.stopPropagation()}
+                  onFocus={(ev) => {
+                    const input = ev.target as HTMLInputElement;
+                    const val = input.value;
+                    if (!entry.isDirectory) {
+                      const lastDot = val.lastIndexOf('.');
+                      if (lastDot > 0) {
+                        input.setSelectionRange(0, lastDot);
+                        return;
+                      }
+                    }
+                    input.select();
+                  }}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter') {
+                      ev.preventDefault();
+                      onRenameSave(entry.path, ev.currentTarget.value.trim(), entry.isDirectory);
+                    } else if (ev.key === 'Escape') {
+                      ev.preventDefault();
+                      onSetEditingPath(null);
+                    }
+                  }}
+                  onBlur={(ev) => onRenameSave(entry.path, ev.target.value.trim(), entry.isDirectory)}
+                />
+              ) : (
+                entry?.name ?? '-'
+              )
+            ) : colId === 'size' ? (
+              entry?.isDirectory ? '' : formatSize(entry?.size)
+            ) : colId === 'type' ? (
+              getFileType(entry, t)
+            ) : colId === 'mtime' ? (
+              formatMtime(entry?.mtime)
+            ) : null}
+          </span>
+        );
+      })}
+    </div>
+  );
+});

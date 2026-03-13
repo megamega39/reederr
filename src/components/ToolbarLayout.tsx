@@ -11,6 +11,7 @@ import {
     ArrowRight,
 } from 'lucide-react';
 import { useLayoutStore } from '../stores/layoutStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import styles from './ViewerToolbar.module.css';
 import { useTranslation } from '../i18n';
 import { MediaAPI } from '../services/api';
@@ -24,8 +25,8 @@ export function ToolbarLayout() {
         setViewMode,
         binding,
         setBinding,
-        isPreviewFullscreen,
-    } = useLayoutStore();
+    } = useSettingsStore();
+    const { isPreviewFullscreen } = useLayoutStore();
 
     const handleToggleFullscreen = () => {
         MediaAPI.setPreviewFullscreen(!isPreviewFullscreen);

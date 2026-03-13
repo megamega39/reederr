@@ -16,7 +16,7 @@ export function AddressBar() {
 
   // Sync input value when externally navigating
   useEffect(() => {
-    setInputValue(currentPath ?? '');
+    setInputValue(currentPath ? String(currentPath) : '');
     setIsEditing(false); // Reset to breadcrumbs on navigation
   }, [currentPath]);
 

@@ -38,6 +38,7 @@ export const ja = {
     favorites: 'お気に入り',
     pc: 'PC',
     network: 'ネットワーク',
+    header: 'フォルダ',
     empty: 'フォルダがありません',
   },
   settings: {

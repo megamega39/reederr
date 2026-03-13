@@ -24,6 +24,10 @@ class TempManager {
     this.ensureDir(TEMP_BASE);
   }
 
+  getBaseTempDir(): string {
+    return TEMP_BASE;
+  }
+
   private ensureDir(path: string) {
     if (!existsSync(path)) {
       mkdirSync(path, { recursive: true });
@@ -45,20 +49,28 @@ class TempManager {
 
   registerFile(key: string, path: string) {
     try {
-      const size = statSync(path).size;
-      const entry: TempEntry = {
-        path,
-        size,
-        lastAccess: Date.now(),
-      };
+      const stats = statSync(path);
+      const size = stats.size;
+
+      // If key already exists, "remove" its old size from totalBytes before evict checking
+      const existing = this.cache.get(key);
+      if (existing) {
+        this.totalBytes -= existing.size;
+        this.cache.delete(key);
+      }
 
       while (this.cache.size >= MAX_TEMP_FILES || this.totalBytes + size > MAX_TEMP_BYTES) {
         if (!this.evictOldest()) break;
       }
 
+      const entry: TempEntry = {
+        path,
+        size,
+        lastAccess: Date.now(),
+      };
       this.cache.set(key, entry);
       this.totalBytes += size;
-    } catch {
+    } catch (err) {
       /* ignore */
     }
   }

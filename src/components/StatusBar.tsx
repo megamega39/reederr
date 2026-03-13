@@ -1,9 +1,12 @@
 import { memo, useMemo } from 'react';
-import { useViewerStore } from '../stores/viewerStore';
+import { useAppStore } from '../stores/appStore';
+import { useNavigationStore } from '../stores/navigationStore';
+import { useMediaStore } from '../stores/mediaStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import { normalizePath } from '../stores/viewerStore.utils';
 import styles from './StatusBar.module.css';
 import { useTranslation } from '../i18n';
+import { useShallow } from 'zustand/react/shallow';
 
 function formatSize(bytes?: number) {
   if (bytes == null || bytes < 0) return '';
@@ -15,13 +18,29 @@ function formatSize(bytes?: number) {
 
 export const StatusBar = memo(() => {
   const { t } = useTranslation();
-  const selectedPath = useViewerStore((s) => s.selectedPath);
-  const selectedPaths = useViewerStore((s) => s.selectedPaths);
-  const entries = useViewerStore((s) => s.entries);
-  const selectedEntry = useViewerStore((s) => s.selectedEntry);
-  const getSelectedPosition = useViewerStore((s) => s.getSelectedPosition);
-  const imageDimensions = useViewerStore((s) => s.imageDimensions);
-  const error = useViewerStore((s) => s.error);
+  
+  const { selectedPath, selectedPaths, selectedEntry, getSelectedPosition, imageDimensions } = useMediaStore(
+    useShallow((s) => ({
+      selectedPath: s.selectedPath,
+      selectedPaths: s.selectedPaths,
+      selectedEntry: s.selectedEntry,
+      getSelectedPosition: s.getSelectedPosition,
+      imageDimensions: s.imageDimensions,
+    }))
+  );
+
+  const { entries } = useNavigationStore(
+    useShallow((s) => ({
+      entries: s.entries,
+    }))
+  );
+
+  const { error } = useAppStore(
+    useShallow((s) => ({
+      error: s.error,
+    }))
+  );
+
   const scaleMode = useLayoutStore((s) => s.scaleMode);
 
   const entry = selectedEntry();

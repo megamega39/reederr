@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from './stores/viewerStore';
 import { useLayoutStore } from './stores/layoutStore';
+import { useSettingsStore } from './stores/settingsStore';
 import { FolderTree } from './components/FolderTree';
 import { FileList } from './components/FileList';
 import { MediaView } from './components/MediaView';
@@ -78,7 +79,7 @@ export default function App() {
   useIpcMenuHandlers(handleToggleFullscreen, setShowSettings, setShowHelp);
 
   // Slideshow Timer Effect
-  const slideshowInterval = useViewerStore((s) => s.slideshowInterval);
+  const slideshowInterval = useSettingsStore((s) => s.slideshowInterval);
 
   useEffect(() => {
     if (!slideshowActive) return;

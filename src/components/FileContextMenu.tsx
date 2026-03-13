@@ -77,10 +77,10 @@ export function FileContextMenu({
         return;
       }
       const result = await FileSystemAPI.renameFile(path, newName);
-      if (result?.ok) {
+      if (result.ok) {
         onRenamed?.(path, newName);
         window.dispatchEvent(new CustomEvent('file-renamed', { detail: { path, newName } }));
-      } else if (result?.error) {
+      } else {
         alert(result.error);
       }
     } catch (err) {
@@ -97,10 +97,10 @@ export function FileContextMenu({
         return;
       }
       const result = await FileSystemAPI.deleteFile(path);
-      if (result?.ok) {
+      if (result.ok) {
         onDeleted?.(path);
         window.dispatchEvent(new CustomEvent('file-deleted', { detail: { path } }));
-      } else if (result?.error) {
+      } else {
         alert(result.error);
       }
     } catch (err) {
@@ -146,8 +146,9 @@ export function FileContextMenu({
         <div 
           key={tool.id} 
           className="folder-context-menu-item" 
-          onClick={() => {
-            SystemAPI.openWithApp(path, tool.appPath);
+          onClick={async () => {
+            const result = await SystemAPI.openWithApp(path, tool.appPath);
+            if (!result.ok) alert(result.error);
             onClose();
           }}
         >

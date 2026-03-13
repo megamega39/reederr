@@ -6,6 +6,7 @@ import { splitArchivePath } from './utils';
 import { Readable } from 'node:stream';
 import { logger } from '../utils/logger';
 import { createReadStream } from 'node:fs';
+import { getDrives, getNetworkResources } from '../drives';
 
 const ARCHIVE_EXT = ['.zip', '.cbz', '.rar', '.cbr', '.7z', '.7zip', '.tar', '.gz', '.bz2', '.xz', '.iso', '.lzh', '.lha', '.lzma'];
 
@@ -23,12 +24,35 @@ function isArchiveFilepath(path: string): boolean {
 
 export interface ListDirectoryOptions {
   recursive?: boolean;
+  onChunk?: (files: DirectoryEntry[]) => void;
+  skipStats?: boolean;
 }
 
 export async function listDirectory(
   path: string,
   options?: ListDirectoryOptions
 ): Promise<DirectoryEntry[]> {
+  const normPath = path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/[/\!]+$/, '').toLowerCase();
+  
+  if (normPath === 'pc') {
+    const drives = await getDrives();
+    return drives.map(d => ({
+      name: d.name,
+      path: d.path,
+      isDirectory: true,
+      isArchive: false
+    }));
+  }
+  if (normPath === 'network') {
+    const resources = await getNetworkResources();
+    return resources.map(r => ({
+      name: r.name,
+      path: r.path,
+      isDirectory: true,
+      isArchive: false
+    }));
+  }
+
   const split = splitArchivePath(path);
   if (split) {
     if (isRarListingPath(path)) {
@@ -44,14 +68,15 @@ export async function listDirectory(
     logger.error('[Reederr VFS] LocalFS.list called with archive path:', path);
     throw new Error(`アーカイブは開けていません。パスを zip! 形式で指定してください: ${path}`);
   }
-  return localFS.listDirectory(path);
+  return localFS.listDirectory(path, options);
 }
 
 export async function readFile(path: string): Promise<ArrayBuffer> {
   const split = splitArchivePath(path);
   if (split) {
-    if (isRarPath(path)) return rarReadFile(path);
-    return readFileFromArchive(path);
+    // Use the optimized batch extractor for all archive files (ZIP, RAR, 7z, etc.)
+    const { archiveExtractor } = await import('./archiveExtractor');
+    return archiveExtractor.readFile(path);
   }
   return localFS.readFile(path);
 }

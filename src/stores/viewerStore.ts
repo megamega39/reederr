@@ -1,102 +1,164 @@
-import { create } from 'zustand';
+import { useAppStore } from './appStore';
+import { useNavigationStore } from './navigationStore';
+import { useTreeStore } from './treeStore';
+import { useMediaStore } from './mediaStore';
+import { useFavoriteStore } from './favoriteStore';
 import { PersistenceAPI, FileSystemAPI } from '../services/api';
-import { ViewerState } from './viewerStore.types';
-import { VIEWER_KEY } from './viewerStore.utils';
-import { createTreeSlice } from './slices/treeSlice';
-import { createMediaSlice } from './slices/mediaSlice';
-import { createNavigationSlice } from './slices/navigationSlice';
-import { createFavoriteSlice } from './slices/favoriteSlice';
-import { createAppSlice } from './slices/appSlice';
+import { VIEWER_KEY, isMediaEntry } from './viewerStore.utils';
+
+export type ViewerFacade = ReturnType<typeof useAppStore.getState> &
+  ReturnType<typeof useNavigationStore.getState> &
+  ReturnType<typeof useTreeStore.getState> &
+  ReturnType<typeof useMediaStore.getState> &
+  ReturnType<typeof useFavoriteStore.getState>;
 
 /**
- * useViewerStore
- * Unified store that combines multiple logic slices.
+ * legacy / facade for compatibility
+ * We encourage using useAppStore, useNavigationStore, etc. directly.
  */
-export const useViewerStore = create<ViewerState>()((...a) => ({
-  ...createAppSlice(...a),
-  ...createTreeSlice(...a),
-  ...createMediaSlice(...a),
-  ...createNavigationSlice(...a),
-  ...createFavoriteSlice(...a),
-}));
+export function useViewerStore(): ViewerFacade;
+export function useViewerStore<T>(selector: (state: ViewerFacade) => T): T;
+export function useViewerStore<T>(selector?: (state: ViewerFacade) => T) {
+  const app = useAppStore();
+  const nav = useNavigationStore();
+  const tree = useTreeStore();
+  const media = useMediaStore();
+  const fav = useFavoriteStore();
+
+  const facade: ViewerFacade = {
+    ...app,
+    ...nav,
+    ...tree,
+    ...media,
+    ...fav,
+  };
+
+  // Guard: if this object is accidentally used as a string (e.g. currentPath.split)
+  // we give it a recognizable string value to help debugging,
+  // although the actual fix is ensuring the selector works.
+  if (typeof (facade as any).toString !== 'function' || (facade as any).toString === Object.prototype.toString) {
+    Object.defineProperty(facade, 'toString', {
+      value: () => '[ViewerStoreFacadeObject]',
+      enumerable: false
+    });
+  }
+
+  return selector ? selector(facade) : facade;
+}
+
+/**
+ * Persistence & Side-effects Coordination
+ */
 
 export async function loadViewerFromStorage(): Promise<void> {
   try {
     const raw = await PersistenceAPI.loadStore();
-    const data = raw[VIEWER_KEY] as {
-      currentPath?: string;
-      selectedPath?: string;
-      history?: any[];
-      historyIndex?: number;
-      favorites?: any[];
-    };
+    const data = raw[VIEWER_KEY] as any;
+    
     if (data) {
-      useViewerStore.setState(() => ({
-        ...(data.currentPath && { currentPath: data.currentPath }),
-        ...(data.selectedPath && { selectedPath: data.selectedPath }),
-        ...(Array.isArray(data.history) && { history: data.history }),
-        ...(data.historyIndex != null && { historyIndex: data.historyIndex }),
-        ...(Array.isArray(data.favorites) && { favorites: data.favorites }),
-        isHydrated: true,
-      }));
+      if (data.historyIndex != null) useNavigationStore.setState({ historyIndex: data.historyIndex });
+      if (Array.isArray(data.favorites)) useFavoriteStore.setState({ favorites: data.favorites });
+      
+      // Load paths LAST so reveals happen after dependent data is ready
+      if (data.currentPath) useNavigationStore.setState({ currentPath: data.currentPath });
+      if (data.selectedPath) useMediaStore.setState({ selectedPath: data.selectedPath });
+
+      useAppStore.setState({ isHydrated: true });
     } else {
-      useViewerStore.getState().setHydrated(true);
+      useAppStore.setState({ isHydrated: true });
     }
   } catch (err) {
-    useViewerStore.getState().setHydrated(true);
+    useAppStore.setState({ isHydrated: true });
   }
 }
 
 export function saveViewerToStorage(): void {
-  const state = useViewerStore.getState();
-  if (state.isRestoring || !state.isHydrated) {
-    console.log('[Persistence] Save skipped (restoring or not hydrated)');
-    return;
-  }
-  const { currentPath, selectedPath, history, historyIndex, favorites } = state;
+  const appState = useAppStore.getState();
+  if (appState.isRestoring || !appState.isHydrated) return;
+
+  const nav = useNavigationStore.getState();
+  const media = useMediaStore.getState();
+  const fav = useFavoriteStore.getState();
+
   const data = {
-    currentPath,
-    selectedPath,
-    history,
-    historyIndex,
-    favorites,
+    currentPath: nav.currentPath,
+    selectedPath: media.selectedPath,
+    history: nav.history,
+    historyIndex: nav.historyIndex,
+    favorites: fav.favorites,
   };
+
   PersistenceAPI.saveStore({
     [VIEWER_KEY]: data,
   });
 }
 
-// Side-effect: Manual persistence trigger for favorites
-useViewerStore.subscribe((state, prevState) => {
-  if (state.favorites !== prevState.favorites && state.isHydrated && !state.isRestoring) {
+// Coordinate: Favorites change -> Save
+useFavoriteStore.subscribe((state, prevState) => {
+  if (state.favorites !== prevState.favorites) {
     saveViewerToStorage();
   }
 });
 
-// Side-effect: Auto-reveal folder tree when path changes
-useViewerStore.subscribe((state, prevState) => {
-  if (state.currentPath && state.currentPath !== prevState.currentPath && state.isHydrated) {
-    // We don't await here to avoid blocking other state updates, 
-    // but revealPath internal hydration logic handles sequence.
-    state.revealPath(state.currentPath);
+// Coordinate: Navigation changed -> Tree Reveal & Watcher
+useNavigationStore.subscribe((state, prevState) => {
+  if (state.currentPath && state.currentPath !== prevState.currentPath) {
+    const appState = useAppStore.getState();
+    const norm = (state.currentPath || '').toLowerCase();
+    
+    // Skip reveal during restoration to avoid inconsistent states (PC vs Favorites)
+    if (!appState.isRestoring && norm !== 'pc' && norm !== 'network') {
+      useTreeStore.getState().revealPath(state.currentPath);
+    }
+    
+    if (!state.currentPath.includes('!') && state.currentPath !== 'pc' && state.currentPath !== 'network') {
+      FileSystemAPI.watchDirectory(state.currentPath);
+    }
+    saveViewerToStorage();
   }
 });
 
-// Side-effect: Directory Watching
-useViewerStore.subscribe((state, prevState) => {
-  if (state.currentPath && state.currentPath !== prevState.currentPath && state.isHydrated) {
-    // Only watch real physical directories
-    if (!state.currentPath.includes('!') && state.currentPath !== 'pc' && state.currentPath !== 'network') {
-      FileSystemAPI.watchDirectory(state.currentPath);
+// Coordinate: Directory Load result -> Sync other stores
+useNavigationStore.subscribe((state, prevState) => {
+  if (state.entries !== prevState.entries && state.currentPath) {
+    const { entries, currentPath } = state;
+    
+    // Sync Tree
+    useTreeStore.setState((s) => ({
+      treeChildren: {
+        ...s.treeChildren,
+        [currentPath]: entries
+          .filter(e => e.isDirectory || e.isArchive)
+          .map(e => ({ name: e.name, path: e.path, isDirectory: e.isDirectory, isArchive: e.isArchive }))
+      }
+    }));
+
+    // Sync Media
+    const mediaEntries = entries.filter(isMediaEntry);
+    const mediaStore = useMediaStore.getState();
+    
+    // If imageEntries is empty or path changed, and we have new media entries, 
+    // we use setImageEntries which sets the first one as selected.
+    const pathChanged = currentPath !== prevState.currentPath;
+    
+    if (mediaEntries.length > 0 && (pathChanged || mediaStore.imageEntries.length === 0)) {
+      mediaStore.setImageEntries(mediaEntries);
+      const newSelected = useMediaStore.getState().selectedPath;
+      if (newSelected) {
+        mediaStore.loadMedia(newSelected);
+      }
+    } else {
+      // Just update the list without resetting selection during chunked loading
+      useMediaStore.setState({ imageEntries: mediaEntries });
     }
   }
 });
 
-// Initial global listener for file system changes
+// Global watcher listener
 FileSystemAPI.onFileSystemChanged(({ path }) => {
-  const state = useViewerStore.getState();
-  if (state.currentPath === path && !state.isLoading) {
-    console.log('[Watcher] Current directory changed, refreshing...', path);
-    state.loadDirectory(path, { pushHistory: false });
+  if (typeof path !== 'string') return;
+  const nav = useNavigationStore.getState();
+  if (nav.currentPath === path && !nav.isLoading) {
+    nav.loadDirectory(path, { pushHistory: false });
   }
 });

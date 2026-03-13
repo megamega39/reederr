@@ -20,14 +20,13 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  animation: slideIn 0.2s cubic-bezier(0, 0, 0.2, 1);
   font-family: var(--font-family);
   font-size: var(--font-size-base);
   color: var(--text-main);
 }
 
 .toast.exit {
-  animation: slideOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards;
+  opacity: 0;
 }
 
 .icon {
@@ -64,24 +63,3 @@
 .warn .icon { color: #ff9800; }
 .error .icon { color: #f44336; }
 
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes slideOut {
-  from {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  to {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-}

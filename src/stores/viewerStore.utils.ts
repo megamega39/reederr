@@ -1,25 +1,44 @@
 import { DirectoryEntry } from '../types';
 import { useLayoutStore } from './layoutStore';
 
-export const MEDIA_EXT = [
-  '.jpg', '.jpeg', '.jpe', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif',
-  '.mp4', '.webm', '.avi', '.mkv', '.mov', '.wmv', '.m4v',
-  '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac',
-];
+export const VIDEO_EXT = ['.mp4', '.webm', '.avi', '.mkv', '.mov', '.wmv', '.m4v'];
+export const AUDIO_EXT = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'];
+export const IMAGE_EXT = ['.jpg', '.jpeg', '.jpe', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'];
+export const MEDIA_EXT = [...IMAGE_EXT, ...VIDEO_EXT, ...AUDIO_EXT];
 
 export function isMediaEntry(e: DirectoryEntry): boolean {
   if (e.isDirectory || e.isArchive) return false;
-  const dotIdx = e.name.lastIndexOf('.');
+  if (isJunkFile(e.name)) return false;
+  return isVideoPath(e.name) || isAudioPath(e.name) || isImagePath(e.name);
+}
+
+export function isVideoPath(path: string): boolean {
+  const dotIdx = path.lastIndexOf('.');
   if (dotIdx < 0) return false;
-  const ext = ('.' + e.name.slice(dotIdx + 1)).toLowerCase();
-  return MEDIA_EXT.some((x) => ext === x);
+  const ext = ('.' + path.slice(dotIdx + 1)).toLowerCase();
+  return VIDEO_EXT.includes(ext);
+}
+
+export function isAudioPath(path: string): boolean {
+  const dotIdx = path.lastIndexOf('.');
+  if (dotIdx < 0) return false;
+  const ext = ('.' + path.slice(dotIdx + 1)).toLowerCase();
+  return AUDIO_EXT.includes(ext);
+}
+
+export function isImagePath(path: string): boolean {
+  const dotIdx = path.lastIndexOf('.');
+  if (dotIdx < 0) return false;
+  const ext = ('.' + path.slice(dotIdx + 1)).toLowerCase();
+  return IMAGE_EXT.includes(ext);
 }
 
 export const ARCHIVE_EXTS = ['.zip', '.rar', '.cbz', '.cbr', '.7z', '.7zip', '.tar', '.gz', '.bz2', '.xz', '.iso', '.lzh', '.lha', '.lzma'];
 export const ARCHIVE_OPENED_REGEX = /\.(zip|rar|cbz|cbr|7z|7zip|tar|gz|bz2|xz|iso|lzh|lha|lzma)!/i;
 
 export function isArchivePath(path: string): boolean {
-  const lower = path.toLowerCase();
+  const norm = normalizePath(path);
+  const lower = norm.toLowerCase();
   return ARCHIVE_EXTS.some((ext) => lower.endsWith(ext));
 }
 
@@ -54,10 +73,26 @@ export function getInnerPath(path: string): string {
 
 /**
  * Normalizes a path for consistent comparison.
+ * Ensures forward slashes and removes trailing slashes/exclamations.
  */
-export function normalizePath(path: string): string {
-  if (!path) return '';
-  return path.replace(/\\/g, '/').replace(/[/\!]+$/, '');
+export function normalizePath(path: string | null | undefined): string {
+  if (typeof path !== 'string') return '';
+  // Convert backslashes to forward slashes, squash multiple slashes, remove trailing slash/exclamation
+  let res = path.replace(/\\/g, '/').replace(/\/+/g, '/');
+  if (res.length > 1 && res.endsWith('/')) res = res.slice(0, -1);
+  if (res.endsWith('!')) res = res.slice(0, -1);
+  return res;
+}
+
+/**
+ * Ensures an archive path has the trailing '!' if it's meant to be opened.
+ */
+export function ensureOpenedPath(path: string): string {
+  const norm = normalizePath(path);
+  if (isArchivePath(norm) && !ARCHIVE_OPENED_REGEX.test(path)) {
+    return norm + '!';
+  }
+  return path.includes('!') ? path : norm; // Preserve existing markers if present but not matching regex perfectly
 }
 
 export function isJunkFile(name: string): boolean {
@@ -66,8 +101,9 @@ export function isJunkFile(name: string): boolean {
   return false;
 }
 
-export function getParentPath(p: string): string | null {
+export function getParentPath(p: string | null | undefined): string | null {
   const normalized = normalizePath(p);
+  if (!normalized || normalized === 'pc' || normalized === 'network') return null;
   
   // If we are inside an archive, check for inner parents first
   const archiveRoot = resolveArchivePath(normalized);
@@ -81,12 +117,17 @@ export function getParentPath(p: string): string | null {
   
   // If we are at the root of an archive "xxx.zip!", the parent is the containing directory
   if (archiveRoot && (normalized === archiveRoot || normalized === archiveRoot + '!')) {
-    const physicalParent = archiveRoot.match(/^(.+)[/\\][^/\\]*$/);
-    return physicalParent ? normalizePath(physicalParent[1]) : null;
+    const lastSlash = archiveRoot.lastIndexOf('/');
+    if (lastSlash < 0) return 'pc'; // Root-level archive parent is PC
+    return normalizePath(archiveRoot.slice(0, lastSlash));
   }
 
-  const m = normalized.match(/^(.+)[/\\][^/\\]*$/);
-  return m ? normalizePath(m[1]) : null;
+  const lastSlash = normalized.lastIndexOf('/');
+  if (lastSlash < 0) {
+    // Top-level folders/drives (e.g., "C:") parent is PC
+    return 'pc';
+  }
+  return normalizePath(normalized.slice(0, lastSlash));
 }
 
 export function getFileTypeForSort(e: DirectoryEntry): string {

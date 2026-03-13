@@ -56,7 +56,4 @@ export function getFileType(entry: DirectoryEntry | null | undefined, t: (key: s
   return typeMap[ext] ?? (ext ? t('fileType.extFile', { ext: ext.slice(1).toUpperCase() }) : t('fileType.file'));
 }
 
-export function getParentPath(p: string): string | null {
-  const m = p.match(/^(.+)[/\\][^/\\]*$/);
-  return m ? m[1] : null;
-}
+// getParentPath is now unified in viewerStore.utils.ts

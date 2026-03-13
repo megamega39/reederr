@@ -1,56 +1,51 @@
-import { useMemo } from 'react';
-import { useViewerStore } from '../stores/viewerStore';
+import { useState, useEffect, useRef } from 'react';
+import { useAppStore } from '../stores/appStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import type { DirectoryEntry } from '../types';
-import { getFileType } from '../utils/fileUtils';
-import { useTranslation } from '../i18n';
 
 export function useFileSorting(entries: DirectoryEntry[]) {
-  const { t } = useTranslation();
   const sortBy = useLayoutStore((s) => s.fileListSortBy);
   const sortOrder = useLayoutStore((s) => s.fileListSortOrder);
-  const fileListFilter = useViewerStore((s) => s.fileListFilter);
+  const { fileListFilter } = useAppStore();
 
-  const sortedEntries = useMemo(() => {
-    const safe = entries.filter((e): e is DirectoryEntry => 
-      e != null && 
-      typeof e === 'object' && 
-      typeof (e as DirectoryEntry).name === 'string' && 
-      typeof (e as DirectoryEntry).path === 'string'
-    );
-    
-    // Apply Junk/Temp Filter
-    let filtered = safe.filter((e) => {
-      const name = e.name;
-      // Hide common junk/temp artifacts
-      if (name === '__MACOSX' || name === '.DS_Store' || name.startsWith('._')) return false;
-      if (name.startsWith('~') || name.startsWith('7z')) return false;
-      return true;
-    });
-    // Apply Quick Filter
-    if (fileListFilter) {
-      const lower = fileListFilter.toLowerCase().normalize('NFKC');
-      filtered = filtered.filter((e) => 
-        e.name.toLowerCase().normalize('NFKC').includes(lower)
-      );
+  const [sortedEntries, setSortedEntries] = useState<DirectoryEntry[]>([]);
+  const workerRef = useRef<Worker | null>(null);
+
+  useEffect(() => {
+    // Initialize worker
+    if (!workerRef.current) {
+      workerRef.current = new Worker(new URL('../workers/fileWorker.ts', import.meta.url), {
+        type: 'module'
+      });
+      workerRef.current.onmessage = (e: MessageEvent<DirectoryEntry[]>) => {
+        setSortedEntries(e.data);
+      };
     }
 
-    const mul = sortOrder === 'asc' ? 1 : -1;
-    return [...filtered].sort((a, b) => {
-      if ((a?.isDirectory ?? false) !== (b?.isDirectory ?? false)) return a?.isDirectory ? -1 : 1;
-      let cmp = 0;
-      if (sortBy === 'name') {
-        cmp = (a?.name ?? '').localeCompare(b?.name ?? '', undefined, { sensitivity: 'base' });
-      } else if (sortBy === 'size') {
-        cmp = (a?.size ?? 0) - (b?.size ?? 0);
-      } else if (sortBy === 'mtime') {
-        cmp = (a?.mtime ?? 0) - (b?.mtime ?? 0);
-      } else {
-        cmp = getFileType(a, t).localeCompare(getFileType(b, t));
-      }
-      return cmp * mul;
+    // Optimization: Skip worker if entries is empty
+    if (!entries || entries.length === 0) {
+      setSortedEntries([]);
+      return;
+    }
+
+    // Send task to worker
+    workerRef.current.postMessage({
+      entries,
+      sortBy,
+      sortOrder,
+      filter: fileListFilter
     });
   }, [entries, sortBy, sortOrder, fileListFilter]);
+
+  // Clean up worker on unmount
+  useEffect(() => {
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+    };
+  }, []);
 
   return sortedEntries;
 }

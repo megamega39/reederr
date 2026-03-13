@@ -25,8 +25,8 @@ export function registerMediaProtocol(mediaPathMap: Map<string, string>): void {
     }
 
     const s = await stat(realPath);
-    if (!s) {
-      return new Response('Not Found', { status: 404 });
+    if (!s || s.isDirectory) {
+      return new Response(s?.isDirectory ? 'Forbidden: Directory' : 'Not Found', { status: s?.isDirectory ? 403 : 404 });
     }
     const fileSize = s.size;
     const contentType = getMimeType(realPath);

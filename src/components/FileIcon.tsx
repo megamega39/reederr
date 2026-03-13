@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FileSystemAPI } from '../services/api';
+import { Monitor, Network } from 'lucide-react';
 
 /** key = absPath + '@' + size でキャッシュ（main側と同等） */
 const iconCache = new Map<string, string>();
@@ -54,6 +55,13 @@ export function FileIcon({
   }, [path, iconSizeNum]);
 
   const iconSize = size === 20 ? 20 : 16;
+
+  if (path === 'pc') {
+    return <Monitor size={iconSize} className={className} style={{ flexShrink: 0 }} />;
+  }
+  if (path === 'network') {
+    return <Network size={iconSize} className={className} style={{ flexShrink: 0 }} />;
+  }
 
   if (!path) {
     return (

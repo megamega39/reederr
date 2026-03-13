@@ -4,6 +4,7 @@ import { safeDecodeURIComponent, parseRangeHeader } from './utils/uriUtils';
 import { splitArchivePath } from './vfs/utils';
 import { stat, streamFile } from './vfs/composite';
 import { MIME_MAP } from './vfs/constants';
+import { logger } from './utils/logger';
 
 function getMimeType(path: string): string {
   const ext = extname(path).toLowerCase();
@@ -36,9 +37,9 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
       }
 
       const s = await stat(realPath);
-      if (!s) {
-        res.writeHead(404);
-        res.end();
+      if (!s || s.isDirectory) {
+        res.writeHead(s?.isDirectory ? 403 : 404);
+        res.end(s?.isDirectory ? 'Forbidden: Path is a directory' : 'Not Found');
         return;
       }
       const fileSize = s.size;
@@ -57,7 +58,15 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
 
       if (!rangeHeader || isVirtual) {
         sendHeaders(200, { 'Content-Length': String(fileSize) }, !isHead);
-        if (!isHead) streamFile(realPath).pipe(res);
+        if (!isHead) {
+          const stream = streamFile(realPath);
+          stream.on('error', (err) => {
+            logger.error(`[HttpMediaServer] Stream error for ${realPath}:`, err);
+            if (!res.headersSent) res.writeHead(500);
+            res.end();
+          });
+          stream.pipe(res);
+        }
         return;
       }
 
@@ -76,7 +85,16 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
       }, !isHead);
       
       if (!isHead) {
-        streamFile(realPath, { start, end }).pipe(res);
+        const stream = streamFile(realPath, { start, end });
+        stream.on('error', (err) => {
+          logger.error(`[HttpMediaServer] Range stream error for ${realPath}:`, err);
+          if (!res.headersSent) res.writeHead(500);
+          res.end();
+        });
+        stream.pipe(res);
+        req.on('close', () => {
+          stream.destroy();
+        });
       }
     });
 

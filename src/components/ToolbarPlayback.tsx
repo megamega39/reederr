@@ -1,6 +1,7 @@
 import { Repeat } from 'lucide-react';
 import { useViewerStore } from '../stores/viewerStore';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import styles from './ViewerToolbar.module.css';
 import { useTranslation } from '../i18n';
 
@@ -12,9 +13,8 @@ export function ToolbarPlayback() {
         toggleLoop,
         playbackRate,
         setPlaybackRate,
-        autoPlay,
-        setAutoPlay,
     } = useMediaPlayerStore();
+    const { autoPlay, setAutoPlay } = useSettingsStore();
 
     const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
