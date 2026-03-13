@@ -1,24 +1,15 @@
 import { create } from 'zustand';
+import { PersistenceAPI } from '../services/api';
 
 export type FileListSortBy = 'name' | 'size' | 'type' | 'mtime';
 export type FileListSortOrder = 'asc' | 'desc';
 export type FileListColumnId = 'name' | 'size' | 'type' | 'mtime';
-export type ViewMode = 'single' | 'spread' | 'auto';
-export type Binding = 'rtl' | 'ltr';
-export type ScaleMode = 'fit-window' | 'fit-width' | 'fit-height' | 'original';
+export type FileListViewMode = 'list' | 'grid';
 
 interface LayoutState {
   leftPaneWidth: number;
   folderPaneHeight: number;
   isPreviewFullscreen: boolean;
-  viewMode: ViewMode;
-  binding: Binding;
-  autoThreshold: number;
-  scaleMode: ScaleMode;
-  catalogMode: boolean;
-  autoSpreadCover: boolean;
-  /** サブフォルダも含めて画像を再帰表示 */
-  recursiveMedia: boolean;
   fileListSortBy: FileListSortBy;
   fileListSortOrder: FileListSortOrder;
   fileListColName: number;
@@ -26,28 +17,32 @@ interface LayoutState {
   fileListColType: number;
   fileListColMtime: number;
   fileListColumnOrder: FileListColumnId[];
+  fileListViewMode: FileListViewMode;
+  activeTreePrefix: string | null;
 
   setLeftPaneWidth: (px: number) => void;
   togglePreviewFullscreen: () => void;
   setPreviewFullscreen: (v: boolean) => void;
   setFolderPaneHeight: (px: number) => void;
-  setViewMode: (m: ViewMode) => void;
-  setBinding: (b: Binding) => void;
-  setAutoThreshold: (t: number) => void;
-  setScaleMode: (m: ScaleMode) => void;
-  setCatalogMode: (v: boolean) => void;
-  setAutoSpreadCover: (v: boolean) => void;
-  setRecursiveMedia: (v: boolean) => void;
   setFileListSort: (by: FileListSortBy, order?: FileListSortOrder) => void;
   setFileListColName: (px: number) => void;
   setFileListColSize: (px: number) => void;
   setFileListColType: (px: number) => void;
   setFileListColMtime: (px: number) => void;
   setFileListColumnOrder: (order: FileListColumnId[]) => void;
+  setFileListViewMode: (mode: FileListViewMode) => void;
   isHydrated: boolean;
   setHydrated: (v: boolean) => void;
   isRestoring: boolean;
   setRestoring: (v: boolean) => void;
+  setActiveTreePrefix: (p: string | null) => void;
+
+  // Hover Preview
+  showHoverPreview: boolean;
+  toggleHoverPreview: () => void;
+  hoveredPath: string | null;
+  hoveredPosition: { x: number; y: number } | null;
+  setHoveredItem: (path: string | null, pos?: { x: number; y: number } | null) => void;
 }
 
 const MIN_LEFT = 40;
@@ -62,20 +57,12 @@ const DEFAULT_SIZE = 70;
 const DEFAULT_TYPE = 100;
 const DEFAULT_MTIME = 120;
 
-const DEFAULT_AUTO_THRESHOLD = 1.35;
 const LAYOUT_KEY = 'layout';
 
 export const useLayoutStore = create<LayoutState>((set) => ({
   leftPaneWidth: DEFAULT_LEFT,
   folderPaneHeight: DEFAULT_FOLDER,
   isPreviewFullscreen: false,
-  viewMode: 'auto',
-  binding: 'rtl',
-  autoThreshold: DEFAULT_AUTO_THRESHOLD,
-  scaleMode: 'fit-window',
-  catalogMode: false,
-  autoSpreadCover: true,
-  recursiveMedia: false,
   fileListSortBy: 'name',
   fileListSortOrder: 'asc',
   fileListColName: DEFAULT_NAME,
@@ -83,6 +70,8 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   fileListColType: DEFAULT_TYPE,
   fileListColMtime: DEFAULT_MTIME,
   fileListColumnOrder: ['name', 'size', 'type', 'mtime'],
+  fileListViewMode: 'list',
+  activeTreePrefix: null,
 
   setLeftPaneWidth: (px) =>
     set({ leftPaneWidth: Math.max(MIN_LEFT, px) }),
@@ -95,15 +84,6 @@ export const useLayoutStore = create<LayoutState>((set) => ({
 
   setPreviewFullscreen: (v) =>
     set({ isPreviewFullscreen: v }),
-
-  setViewMode: (m) => set({ viewMode: m }),
-  setBinding: (b) => set({ binding: b }),
-  setAutoThreshold: (t) =>
-    set({ autoThreshold: Math.max(1.1, Math.min(1.8, t)) }),
-  setScaleMode: (m) => set({ scaleMode: m }),
-  setCatalogMode: (v) => set({ catalogMode: v }),
-  setAutoSpreadCover: (v) => set({ autoSpreadCover: v }),
-  setRecursiveMedia: (v) => set({ recursiveMedia: v }),
 
   setFileListSort: (by, order) =>
     set((s) => ({
@@ -124,18 +104,28 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   setFileListColumnOrder: (order) =>
     set({ fileListColumnOrder: order }),
 
+  setFileListViewMode: (mode) => set({ fileListViewMode: mode }),
+
   isHydrated: false,
   setHydrated: (v) => set({ isHydrated: v }),
   isRestoring: false,
   setRestoring: (v) => set({ isRestoring: v }),
+
+  hoveredPath: null,
+  hoveredPosition: null,
+  setHoveredItem: (path, pos) => set({ hoveredPath: path, hoveredPosition: pos ?? null }),
+
+  showHoverPreview: true,
+  toggleHoverPreview: () => set((s) => ({ showHoverPreview: !s.showHoverPreview })),
+
+  setActiveTreePrefix: (p) => set({ activeTreePrefix: p }),
 }));
 
-export async function loadLayoutFromStorage(): Promise<void> {
+export const loadLayoutFromStorage = async () => {
   try {
-    const raw = await window.reederr.loadStore();
-    const data = raw[LAYOUT_KEY] as any;
+    const raw = await PersistenceAPI.loadStore();
+    const data = raw[LAYOUT_KEY] as Partial<LayoutState> | undefined;
     if (data) {
-      console.log('[Persistence] Loaded layout state:', Object.keys(data));
       useLayoutStore.setState((state) => ({
         ...state,
         ...data,
@@ -145,7 +135,6 @@ export async function loadLayoutFromStorage(): Promise<void> {
       useLayoutStore.getState().setHydrated(true);
     }
   } catch (err) {
-    console.error('[Persistence] Failed to load layout state:', err);
     useLayoutStore.getState().setHydrated(true);
   }
 }
@@ -153,18 +142,11 @@ export async function loadLayoutFromStorage(): Promise<void> {
 export function saveLayoutToStorage(): void {
   const state = useLayoutStore.getState();
   if (state.isRestoring || !state.isHydrated) {
-    console.log('[Persistence] Layout save skipped (restoring or not hydrated)');
     return;
   }
   const {
     leftPaneWidth,
     folderPaneHeight,
-    viewMode,
-    binding,
-    autoThreshold,
-    scaleMode,
-    catalogMode,
-    recursiveMedia,
     fileListSortBy,
     fileListSortOrder,
     fileListColumnOrder,
@@ -172,17 +154,14 @@ export function saveLayoutToStorage(): void {
     fileListColSize,
     fileListColType,
     fileListColMtime,
+    fileListViewMode,
+    showHoverPreview,
+    activeTreePrefix,
   } = state;
 
-  const data = {
+  const layoutState = {
     leftPaneWidth,
     folderPaneHeight,
-    viewMode,
-    binding,
-    autoThreshold,
-    scaleMode,
-    catalogMode,
-    recursiveMedia,
     fileListSortBy,
     fileListSortOrder,
     fileListColumnOrder,
@@ -190,10 +169,13 @@ export function saveLayoutToStorage(): void {
     fileListColSize,
     fileListColType,
     fileListColMtime,
+    fileListViewMode,
+    showHoverPreview,
+    activeTreePrefix,
   };
 
-  console.log('[Persistence] Saving layout state:', Object.keys(data));
-  window.reederr.saveStore({
-    [LAYOUT_KEY]: data,
+  console.log('[Persistence] Saving layout state:', Object.keys(layoutState));
+  PersistenceAPI.saveStore({
+    [LAYOUT_KEY]: layoutState,
   });
 }

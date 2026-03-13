@@ -1,6 +1,7 @@
 import { Check, Folder, FileArchive, Monitor, File } from 'lucide-react';
 import { useViewerStore } from '../stores/viewerStore';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useLayoutEffect } from 'react';
+import { useTranslation } from '../i18n';
 
 interface HistoryDropdownProps {
     onClose: () => void;
@@ -8,8 +9,10 @@ interface HistoryDropdownProps {
 }
 
 export function HistoryDropdown({ onClose, anchorRect }: HistoryDropdownProps) {
+    const { t } = useTranslation();
     const { history, historyIndex, jumpToHistory } = useViewerStore();
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const [leftPos, setLeftPos] = useState(0);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -21,13 +24,28 @@ export function HistoryDropdown({ onClose, anchorRect }: HistoryDropdownProps) {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [onClose]);
 
+    useLayoutEffect(() => {
+        if (!anchorRect || !dropdownRef.current) return;
+        
+        const rect = dropdownRef.current.getBoundingClientRect();
+        let targetLeft = anchorRect.left;
+        
+        // Overflow check
+        if (targetLeft + rect.width > window.innerWidth - 10) {
+            targetLeft = window.innerWidth - rect.width - 10;
+        }
+        
+        setLeftPos(Math.max(4, targetLeft));
+    }, [anchorRect]);
+
     if (!anchorRect) return null;
 
     const style: React.CSSProperties = {
         position: 'fixed',
         top: anchorRect.bottom + 4,
-        left: Math.min(anchorRect.left, window.innerWidth - 320),
+        left: leftPos || anchorRect.left, // Fallback to anchor left before measurement
         zIndex: 9999,
+        visibility: leftPos ? 'visible' : 'hidden', // Hide until we have a correct position
     };
 
     const getIcon = (type: string) => {
@@ -41,8 +59,8 @@ export function HistoryDropdown({ onClose, anchorRect }: HistoryDropdownProps) {
 
     const getTypeText = (type: string) => {
         switch (type) {
-            case 'folder': return '<フォルダ>';
-            case 'archive': return '<書庫>';
+            case 'folder': return `<${t('fileType.folder')}>`;
+            case 'archive': return `<${t('fileType.archive')}>`;
             case 'pc': return '<PC>';
             default: return '';
         }

@@ -1,9 +1,11 @@
 import { existsSync } from 'node:fs';
+import { Readable } from 'node:stream';
 import type { DirectoryEntry, FileStats } from './types';
 import { get7zPath } from '../sevenZipPath';
 import { getArchiveIndex } from './archiveIndexCache';
-import { extractToStdout } from './sevenZip';
+import { extractToStdout, extractToStream } from './sevenZip';
 import { splitArchivePath } from './utils';
+import { logger } from '../utils/logger';
 
 import { ARCHIVE_EXT_REGEX, isArchiveExtension } from './utils';
 
@@ -20,9 +22,8 @@ function isArchivePath(path: string): boolean {
 }
 
 export function isArchiveListingPath(path: string): boolean {
-  if (path.includes('!')) {
-    const split = splitArchivePath(path);
-    if (!split) return false;
+  const split = splitArchivePath(path);
+  if (split) {
     const archivePart = split[0];
     return existsSync(archivePart) && isArchivePath(archivePart);
   }
@@ -54,9 +55,7 @@ export async function listArchiveDirectory(
   return listZipVia7z(archivePath, prefix, options?.recursive ?? false);
 }
 
-const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.jpe', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif']);
-const VIDEO_EXT = new Set(['.mp4', '.webm', '.avi', '.mkv', '.mov', '.wmv', '.m4v']);
-const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac']);
+import { IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from './constants';
 
 /** 拡張子は大文字小文字を区別しない（.JPG, .jpg ともに画像として認識） */
 function isMediaPath(path: string): boolean {
@@ -112,12 +111,6 @@ async function listZipVia7z(
         mtime: e.mtime,
       });
     }
-    console.log('[Reederr VFS] listZipVia7z(recursive)', {
-      totalRawEntries,
-      filesInIndex,
-      prefix: prefixNorm,
-      matchingMediaCount: result.length,
-    });
     result.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     return result;
   }
@@ -166,15 +159,6 @@ async function listZipVia7z(
     return listZipVia7z(archivePath, soleDir + '/', false);
   }
 
-  console.log('[Reederr VFS] listZipVia7z', {
-    totalRawEntries,
-    filesInIndex,
-    prefix: prefixNorm,
-    matchingBeforeSeen: matchingCount,
-    entriesAfterFilter: result.length,
-    entryNames: result.map((r) => r.name),
-  });
-
   result.sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
     return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
@@ -199,11 +183,45 @@ export async function readFileFromArchive(path: string): Promise<ArrayBuffer> {
       '7-Zip (7z.exe) が見つかりません。ZIP/CBZ を開くには tools/7zip に 7z.exe と 7z.dll を配置してください。'
     );
   }
-  const buf = await extractToStdout(archivePath, innerPath);
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  
+  try {
+    logger.debug(`[ArchiveFS] Reading: ${archivePath}!${innerPath}`);
+    const buf = await extractToStdout(archivePath, innerPath);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  } catch (err) {
+    logger.error(`[ArchiveFS] Failed to read ${innerPath} from ${archivePath}:`, err);
+    throw err;
+  }
 }
 
-export function statFromArchive(path: string): FileStats | null {
-  // 同期的な stat は ZIP では難しい。必要なら listArchive で事前に情報を持っておく。
-  return null;
+export async function statFromArchive(path: string): Promise<FileStats | null> {
+  const split = splitArchivePath(path);
+  if (!split) return null;
+  const [archivePath, innerPathRaw] = split;
+  const innerPath = innerPathRaw.replace(/\\/g, '/').replace(/^\/+/, '');
+
+  const index = await getArchiveIndex(archivePath);
+  const entry = index.find(e => e.path.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase() === innerPath.toLowerCase());
+  if (!entry) return null;
+
+  return {
+    size: entry.size,
+    isDirectory: entry.isDirectory,
+    mtime: entry.mtime,
+  };
+}
+
+export function streamFileFromArchive(path: string): Readable {
+  const split = splitArchivePath(path);
+  if (!split) {
+    throw new Error('Not an archive path');
+  }
+  const [archivePath, innerPathRaw] = split;
+  const innerPath = innerPathRaw.replace(/\\/g, '/').replace(/^\/+/, '');
+
+  if (isRarArchive(archivePath)) {
+    throw new Error('RAR streaming is not yet implemented in archiveFS');
+  }
+
+  return extractToStream(archivePath, innerPath);
 }

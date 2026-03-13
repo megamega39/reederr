@@ -1,22 +1,44 @@
-import { existsSync, mkdirSync, statSync, unlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { existsSync, unlinkSync } from 'node:fs';
 import { extractToTemp } from './vfs/sevenZip';
+import { splitArchivePath } from './vfs/utils';
+import { tempManager } from './vfs/tempManager';
+import { VIDEO_EXT, AUDIO_EXT } from './vfs/constants';
+import { toLongPathIfNeeded } from './utils/longPath';
 
 const MEDIA_ID_PREFIX = 'm';
 let mediaIdCounter = 0;
 const mediaPathMap = new Map<string, string>();
 const idToTempPath = new Map<string, string>();
 
-const MAX_TEMP_FILES = 200;
-const MAX_TEMP_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
+// Simple queue for archive extractions to prevent concurrent extractions to the same subdir
+const extractionQueues = new Map<string, Promise<any>>();
 
-const extractCache = new Map<
-  string,
-  { path: string; size: number; lastAccess: number; mediaId: string }
->();
-let extractCacheTotalBytes = 0;
-const accessOrder: string[] = [];
+async function enqueueExtraction<T>(archivePath: string, task: () => Promise<T>): Promise<T> {
+  const EXTRACTION_TIMEOUT_MS = 60_000;
+  const previous = extractionQueues.get(archivePath) || Promise.resolve();
+  
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Extraction timed out for ${archivePath} after ${EXTRACTION_TIMEOUT_MS}ms`)), EXTRACTION_TIMEOUT_MS);
+  });
+
+  const next = (async () => {
+    try {
+      await previous;
+    } catch {
+      // ignore
+    }
+    return Promise.race([task(), timeoutPromise]);
+  })();
+  
+  extractionQueues.set(archivePath, next);
+  try {
+    return await next;
+  } finally {
+    if (extractionQueues.get(archivePath) === next) {
+      extractionQueues.delete(archivePath);
+    }
+  }
+}
 
 function isRarArchive(path: string): boolean {
   const lower = path.toLowerCase();
@@ -33,7 +55,8 @@ export function getMediaPathMap(): Map<string, string> {
 }
 
 export function registerMediaPath(realPath: string, isTemp = false): string {
-  if (!existsSync(realPath)) {
+  const checkPath = toLongPathIfNeeded(realPath);
+  if (!existsSync(checkPath)) {
     throw new Error(`File not found: ${realPath}`);
   }
   const id = `${MEDIA_ID_PREFIX}${++mediaIdCounter}-${Date.now()}`;
@@ -44,113 +67,77 @@ export function registerMediaPath(realPath: string, isTemp = false): string {
   return id;
 }
 
-function evictExtractCache(): void {
-  const sorted = [...accessOrder].sort(
-    (a, b) => (extractCache.get(a)?.lastAccess ?? 0) - (extractCache.get(b)?.lastAccess ?? 0)
-  );
-  for (const key of sorted) {
-    if (extractCache.size <= 1 && extractCacheTotalBytes < MAX_TEMP_BYTES * 0.5) break;
-    const ent = extractCache.get(key);
-    if (!ent) continue;
-    try {
-      unlinkSync(ent.path);
-    } catch {
-      /* ignore */
+export async function getMediaUrls(
+  vpaths: string[],
+  _options?: { rawId?: boolean }
+): Promise<string[]> {
+  if (vpaths.length === 0) return [];
+  
+  // Group by archive to batch extract
+  const archiveGroups = new Map<string, string[]>();
+  const physicalPaths: string[] = [];
+  const results = new Array(vpaths.length).fill('');
+
+  vpaths.forEach((v, i) => {
+    const split = splitArchivePath(v);
+    if (split) {
+      const archivePath = split[0];
+      const innerPath = split[1];
+      if (!archiveGroups.has(archivePath)) archiveGroups.set(archivePath, []);
+      archiveGroups.get(archivePath)!.push(innerPath);
+    } else {
+      physicalPaths.push(v);
     }
-    mediaPathMap.delete(ent.mediaId);
-    idToTempPath.delete(ent.mediaId);
-    extractCache.delete(key);
-    const idx = accessOrder.indexOf(key);
-    if (idx >= 0) accessOrder.splice(idx, 1);
-    extractCacheTotalBytes -= ent.size;
+  });
+
+  // Handle archives in batches
+  for (const [archivePath, innerPaths] of archiveGroups.entries()) {
+    const subDir = tempManager.getTempDirForEntry(archivePath, innerPaths[0]); // Use first as anchor
+
+    // Use our queue to prevent concurrent extraction for the same archive
+    const extractedPaths = await enqueueExtraction(archivePath, async () => {
+       const { extractMultipleToTemp } = await import('./vfs/sevenZip');
+       try {
+         return await extractMultipleToTemp(archivePath, innerPaths, subDir);
+       } catch (err) {
+         console.error(`[mediaUrlManager] Batch extraction failed for ${archivePath}:`, err);
+         throw err;
+       }
+    });
+    
+    innerPaths.forEach((inner, idx) => {
+      const vpath = `${archivePath}!${inner}`;
+      const realPath = extractedPaths[idx];
+      if (!realPath) return; // Skip failed extractions
+
+      const cacheKey = `media:${archivePath}!${inner}`;
+      tempManager.registerFile(cacheKey, realPath);
+      const id = registerMediaPath(realPath, true);
+      
+      // Find where this vpath was in the original request
+      vpaths.forEach((orig, origIdx) => {
+        if (orig === vpath) results[origIdx] = _options?.rawId ? id : `media://${id}`;
+      });
+    });
   }
+
+  // Handle physical paths
+  physicalPaths.forEach(v => {
+    const id = registerMediaPath(v, false);
+    vpaths.forEach((orig, origIdx) => {
+      if (orig === v) results[origIdx] = _options?.rawId ? id : `media://${id}`;
+    });
+  });
+
+  return results;
 }
 
 export async function getMediaUrl(
   vpath: string,
   _options?: { rawId?: boolean }
 ): Promise<string> {
-  const sepIdx = vpath.indexOf('!');
-  if (sepIdx >= 0) {
-    const archivePath = vpath.slice(0, sepIdx);
-    const innerPath = vpath.slice(sepIdx + 1);
-    if (!archivePath || !innerPath || !existsSync(archivePath)) {
-      throw new Error('Archive or path not found');
-    }
-
-    const cacheKey = `${archivePath}!${innerPath}`;
-    const cached = extractCache.get(cacheKey);
-    if (cached && existsSync(cached.path)) {
-      cached.lastAccess = Date.now();
-      const idx = accessOrder.indexOf(cacheKey);
-      if (idx >= 0) accessOrder.splice(idx, 1);
-      accessOrder.push(cacheKey);
-      return _options?.rawId ? cached.mediaId : `media://${cached.mediaId}`;
-    }
-
-    if (isRarArchive(archivePath)) {
-      const tempBase = join(tmpdir(), 'reederr-media');
-      if (!existsSync(tempBase)) mkdirSync(tempBase, { recursive: true });
-      const subDir = join(tempBase, `extract-${Date.now()}`);
-      mkdirSync(subDir, { recursive: true });
-      const extractedPath = await extractToTemp(archivePath, innerPath, subDir);
-      let size = 0;
-      try {
-        size = statSync(extractedPath).size;
-      } catch {
-        /* ignore */
-      }
-      while (
-        extractCache.size >= MAX_TEMP_FILES ||
-        extractCacheTotalBytes + size > MAX_TEMP_BYTES
-      ) {
-        evictExtractCache();
-      }
-      const id = registerMediaPath(extractedPath, true);
-      extractCache.set(cacheKey, {
-        path: extractedPath,
-        size,
-        lastAccess: Date.now(),
-        mediaId: id,
-      });
-      accessOrder.push(cacheKey);
-      extractCacheTotalBytes += size;
-      return _options?.rawId ? id : `media://${id}`;
-    }
-
-    if (isZipArchive(archivePath)) {
-      const tempBase = join(tmpdir(), 'reederr-media');
-      if (!existsSync(tempBase)) mkdirSync(tempBase, { recursive: true });
-      const subDir = join(tempBase, `zip-${Date.now()}`);
-      mkdirSync(subDir, { recursive: true });
-      const tempPath = await extractToTemp(archivePath, innerPath, subDir);
-      let size = 0;
-      try {
-        size = statSync(tempPath).size;
-      } catch {
-        /* ignore */
-      }
-      while (
-        extractCache.size >= MAX_TEMP_FILES ||
-        extractCacheTotalBytes + size > MAX_TEMP_BYTES
-      ) {
-        evictExtractCache();
-      }
-      const id = registerMediaPath(tempPath, true);
-      extractCache.set(cacheKey, {
-        path: tempPath,
-        size,
-        lastAccess: Date.now(),
-        mediaId: id,
-      });
-      accessOrder.push(cacheKey);
-      extractCacheTotalBytes += size;
-      return _options?.rawId ? id : `media://${id}`;
-    }
-  }
-  if (!existsSync(vpath)) throw new Error('File not found');
-  const id = registerMediaPath(vpath, false);
-  return _options?.rawId ? id : `media://${id}`;
+  const urls = await getMediaUrls([vpath], _options);
+  return urls[0];
 }
 
 export function disposeMediaIdFromUrl(url: string): void {
@@ -165,43 +152,22 @@ export function disposeMediaId(id: string, deleteTemp = false): void {
     const tempPath = idToTempPath.get(id);
     if (tempPath) {
       idToTempPath.delete(id);
-      for (const [key, ent] of extractCache) {
-        if (ent.mediaId === id) {
-          extractCache.delete(key);
-          const idx = accessOrder.indexOf(key);
-          if (idx >= 0) accessOrder.splice(idx, 1);
-          extractCacheTotalBytes -= ent.size;
-          break;
-        }
-      }
+      // Actual temp file deletion is managed by TempManager LRU,
+      // but we remove the manual reference here.
       try {
-        unlinkSync(tempPath);
-      } catch {
-        /* ignore */
-      }
+        if (existsSync(tempPath)) {
+          // If it was a one-off temp (not in TempManager), we might want to unlink,
+          // but for consistency we let TempManager handle its pool.
+        }
+      } catch { /* ignore */ }
     }
   }
 }
 
 export function disposeAllTemp(): void {
-  for (const [id, tempPath] of idToTempPath) {
+  for (const id of idToTempPath.keys()) {
     mediaPathMap.delete(id);
-    try {
-      unlinkSync(tempPath);
-    } catch {
-      /* ignore */
-    }
   }
   idToTempPath.clear();
-  for (const ent of extractCache.values()) {
-    mediaPathMap.delete(ent.mediaId);
-    try {
-      unlinkSync(ent.path);
-    } catch {
-      /* ignore */
-    }
-  }
-  extractCache.clear();
-  accessOrder.length = 0;
-  extractCacheTotalBytes = 0;
+  tempManager.cleanupAll();
 }

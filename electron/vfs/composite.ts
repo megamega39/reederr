@@ -1,13 +1,16 @@
 import * as localFS from './localFS';
-import { isArchiveListingPath, listArchiveDirectory, readFileFromArchive } from './archiveFS';
+import { isArchiveListingPath, listArchiveDirectory, readFileFromArchive, streamFileFromArchive, statFromArchive } from './archiveFS';
 import { isRarListingPath, rarList, rarReadFile, rarStat } from './rarFS';
 import type { DirectoryEntry, FileStats } from './types';
 import { splitArchivePath } from './utils';
+import { Readable } from 'node:stream';
+import { logger } from '../utils/logger';
+import { createReadStream } from 'node:fs';
+import { getDrives, getNetworkResources } from '../drives';
 
-const ARCHIVE_EXT = ['.zip', '.cbz', '.rar', '.cbr'];
+const ARCHIVE_EXT = ['.zip', '.cbz', '.rar', '.cbr', '.7z', '.7zip', '.tar', '.gz', '.bz2', '.xz', '.iso', '.lzh', '.lha', '.lzma'];
 
 function isRarPath(path: string): boolean {
-  if (!path.includes('!')) return false;
   const split = splitArchivePath(path);
   if (!split) return false;
   const archivePart = split[0];
@@ -21,52 +24,81 @@ function isArchiveFilepath(path: string): boolean {
 
 export interface ListDirectoryOptions {
   recursive?: boolean;
+  onChunk?: (files: DirectoryEntry[]) => void;
+  skipStats?: boolean;
 }
 
 export async function listDirectory(
   path: string,
   options?: ListDirectoryOptions
 ): Promise<DirectoryEntry[]> {
+  const normPath = path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/[/\!]+$/, '').toLowerCase();
+  
+  if (normPath === 'pc') {
+    const drives = await getDrives();
+    return drives.map(d => ({
+      name: d.name,
+      path: d.path,
+      isDirectory: true,
+      isArchive: false
+    }));
+  }
+  if (normPath === 'network') {
+    const resources = await getNetworkResources();
+    return resources.map(r => ({
+      name: r.name,
+      path: r.path,
+      isDirectory: true,
+      isArchive: false
+    }));
+  }
+
   const split = splitArchivePath(path);
   if (split) {
     if (isRarListingPath(path)) {
       const entries = await rarList(path, options);
-      console.log('[Reederr VFS] archiveFS.list(RAR)', {
-        containerPath: split[0],
-        innerDir: split[1],
-        entriesCount: entries.length,
-      });
+      logger.info(`[Reederr VFS] archiveFS.list(RAR): ${split[0]} (${entries.length} entries)`);
       return entries;
     }
     const entries = await listArchiveDirectory(path, options);
-    console.log('[Reederr VFS] archiveFS.list(ZIP)', {
-      containerPath: split[0],
-      innerDir: split[1],
-      entriesCount: entries.length,
-    });
+    logger.info(`[Reederr VFS] archiveFS.list(ZIP): ${split[0]} (${entries.length} entries)`);
     return entries;
   }
   if (isArchiveFilepath(path)) {
-    console.error('[Reederr VFS] BUG: LocalFS.list called with archive path (archive not opened correctly):', path);
+    logger.error('[Reederr VFS] LocalFS.list called with archive path:', path);
     throw new Error(`アーカイブは開けていません。パスを zip! 形式で指定してください: ${path}`);
   }
-  return Promise.resolve(localFS.listDirectory(path));
+  return localFS.listDirectory(path, options);
 }
 
 export async function readFile(path: string): Promise<ArrayBuffer> {
   const split = splitArchivePath(path);
   if (split) {
-    if (isRarPath(path)) return rarReadFile(path);
-    return readFileFromArchive(path);
+    // Use the optimized batch extractor for all archive files (ZIP, RAR, 7z, etc.)
+    const { archiveExtractor } = await import('./archiveExtractor');
+    return archiveExtractor.readFile(path);
   }
-  return Promise.resolve(localFS.readFile(path));
+  return localFS.readFile(path);
 }
 
 export async function stat(path: string): Promise<FileStats | null> {
   const split = splitArchivePath(path);
   if (split) {
     if (isRarPath(path)) return rarStat(path);
-    return null;
+    return await statFromArchive(path);
   }
-  return Promise.resolve(localFS.stat(path));
+  return localFS.stat(path);
+}
+
+export function streamFile(path: string, options?: { start?: number; end?: number }): Readable {
+  const split = splitArchivePath(path);
+  if (split) {
+    if (isRarPath(path)) {
+      throw new Error('RAR streaming is not yet supported');
+    }
+    // Note: Archive streaming currently doesn't support ranges, 
+    // it will return the full stream for the inner file.
+    return streamFileFromArchive(path);
+  }
+  return localFS.streamFile(path, options);
 }

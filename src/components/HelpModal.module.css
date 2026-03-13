@@ -1,0 +1,152 @@
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal {
+  width: 500px;
+  max-width: 90vw;
+  background: var(--win-bg);
+  border: 1px solid var(--border-main);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding: 4px 8px;
+  background: var(--accent-bg-selection);
+  color: var(--accent-text-selection);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-main);
+}
+
+.title {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.tabs {
+  display: flex;
+  background: var(--bg-main);
+  padding: 4px 4px 0;
+  border-bottom: 1px solid var(--border-main);
+}
+
+.tabBtn {
+  padding: 4px 12px;
+  border: 1px solid var(--border-main);
+  border-bottom: none;
+  background: var(--bg-main);
+  color: var(--text-disabled);
+  cursor: pointer;
+  font-size: 12px;
+  margin-right: 2px;
+  border-radius: 2px 2px 0 0;
+}
+
+.tabBtn.active {
+  background: var(--bg-main);
+  color: var(--text-main);
+  position: relative;
+  top: 1px;
+}
+
+.body {
+  padding: 16px;
+  min-height: 300px;
+  max-height: 60vh;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-main);
+}
+
+
+
+
+.section {
+  margin-bottom: 20px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  border-bottom: 1px dashed var(--border-main);
+  padding-bottom: 2px;
+}
+
+.list {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.list li {
+  margin-bottom: 4px;
+}
+
+.shortcutGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shortcutItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcutItem kbd {
+  background: var(--bg-item-active);
+  border: 1px solid var(--border-main);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+  min-width: 30px;
+  text-align: center;
+  font-family: inherit;
+}
+
+.shortcutItem span {
+  font-size: 12px;
+}
+
+.footer {
+  padding: 8px;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-main);
+}
+
+.okBtn {
+  padding: 4px 24px;
+  background: var(--win-bg);
+  border: 1px solid var(--border-main);
+  color: var(--text-main);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.okBtn:hover {
+  filter: brightness(1.1);
+}

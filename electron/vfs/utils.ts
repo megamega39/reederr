@@ -6,6 +6,10 @@ export const ARCHIVE_EXT_REGEX = /\.(zip|cbz|rar|cbr|7z|tar|gz|bz2|xz|iso|lzh|lh
  * Returns null if the path is not a valid archive path containing the '!' delimiter after a known extension.
  */
 export function splitArchivePath(path: string): [archivePath: string, innerPath: string] | null {
+    if (typeof path !== 'string') {
+        console.error('[Reederr VFS] splitArchivePath called with non-string path:', path);
+        return null;
+    }
     const match = path.match(ARCHIVE_EXT_REGEX);
     if (!match) return null;
 
@@ -18,5 +22,6 @@ export function splitArchivePath(path: string): [archivePath: string, innerPath:
 }
 
 export function isArchiveExtension(path: string): boolean {
+    if (typeof path !== 'string') return false;
     return /\.(zip|cbz|rar|cbr|7z|tar|gz|bz2|xz|iso|lzh|lha)$/i.test(path);
 }

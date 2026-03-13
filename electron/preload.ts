@@ -5,9 +5,10 @@ export interface ReederrAPI {
   getSpecialFolders: () => Promise<Array<{ name: string; path: string }>>;
   getDrives: () => Promise<Array<{ name: string; path: string }>>;
   selectFolder: () => Promise<{ path: string } | null>;
+  selectFile: () => Promise<{ path: string } | null>;
   listDirectory: (path: string, options?: { recursive?: boolean }) => Promise<
-    | { success: true; files: Array<{ name: string; path: string; isDirectory: boolean; isArchive: boolean; size?: number; mtime?: number }> }
-    | { success: false; error: string; files: [] }
+     { ok: true; value: Array<{ name: string; path: string; isDirectory: boolean; isArchive: boolean; size?: number; mtime?: number }> }
+    | { ok: false; error: string }
   >;
   readFile: (path: string) => Promise<ArrayBuffer>;
   stat: (path: string) => Promise<{
@@ -20,12 +21,13 @@ export interface ReederrAPI {
   copyPath: (path: string) => Promise<void>;
   copyParentPath: (path: string) => Promise<void>;
   showInExplorer: (path: string) => Promise<void>;
-  createFolder: (parentPath: string, name: string) => Promise<{ ok: boolean; error?: string }>;
-  renameFolder: (path: string, newName: string) => Promise<{ ok: boolean; error?: string }>;
-  deleteFolder: (path: string) => Promise<{ ok: boolean; error?: string }>;
-  renameFile: (path: string, newName: string) => Promise<{ ok: boolean; error?: string }>;
-  deleteFile: (path: string) => Promise<{ ok: boolean; error?: string }>;
-  getMediaUrl: (vpath: string, preferHttp?: boolean) => Promise<string>;
+  createFolder: (parentPath: string, name: string) => Promise<{ ok: true; value: void } | { ok: false; error: string }>;
+  renameFolder: (path: string, newName: string) => Promise<{ ok: true; value: void } | { ok: false; error: string }>;
+  deleteFolder: (path: string) => Promise<{ ok: true; value: void } | { ok: false; error: string }>;
+  renameFile: (path: string, newName: string) => Promise<{ ok: true; value: void } | { ok: false; error: string }>;
+  deleteFile: (path: string) => Promise<{ ok: true; value: void } | { ok: false; error: string }>;
+  getMediaUrl: (vpath: string, preferHttp?: boolean) => Promise<{ ok: true; value: string } | { ok: false; error: string }>;
+  getMediaUrls: (vpaths: string[], preferHttp?: boolean) => Promise<{ ok: true; value: string[] } | { ok: false; error: string }>;
   releaseMediaUrl: (url: string) => Promise<void>;
   setPreviewFullscreen: (fullscreen: boolean) => Promise<void>;
   onPreviewFullscreenChanged: (callback: (fullscreen: boolean) => void) => () => void;
@@ -41,8 +43,16 @@ export interface ReederrAPI {
   onMenuOpenFolder: (cb: (path: string) => void) => () => void;
   onMenuCopyPath: (cb: () => void) => () => void;
   onMenuZoom: (cb: (action: string) => void) => () => void;
+  onMenuHelp: (cb: () => void) => () => void;
   loadStore: () => Promise<Record<string, unknown>>;
   saveStore: (data: Record<string, unknown>) => Promise<void>;
+  openWithApp: (path: string, appPath: string) => Promise<{ ok: true; value: void } | { ok: false; error: string }>;
+  onShowToast: (cb: (message: string, type: 'info' | 'success' | 'warn' | 'error', duration?: number) => void) => () => void;
+  rebuildMenu: (lang: string) => Promise<void>;
+  watchDirectory: (path: string) => Promise<void>;
+  onFileSystemChanged: (cb: (payload: { path: string }) => void) => () => void;
+  getThumbnail: (path: string, width: number, height: number) => Promise<string | null>;
+  onDirectoryChunk: (cb: (payload: { path: string; files: any[] }) => void) => () => void;
 }
 
 const api: ReederrAPI = {
@@ -51,6 +61,7 @@ const api: ReederrAPI = {
   getSpecialFolders: () => ipcRenderer.invoke('get-special-folders'),
   getDrives: () => ipcRenderer.invoke('get-drives'),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
+  selectFile: () => ipcRenderer.invoke('select-file'),
   listDirectory: (path, options) =>
     ipcRenderer.invoke('list-directory', { path, recursive: options?.recursive }),
   readFile: (path) => ipcRenderer.invoke('read-file', { path }),
@@ -66,6 +77,7 @@ const api: ReederrAPI = {
   renameFile: (path, newName) => ipcRenderer.invoke('rename-file', { path, newName }),
   deleteFile: (path) => ipcRenderer.invoke('delete-file', { path }),
   getMediaUrl: (vpath, preferHttp) => ipcRenderer.invoke('get-media-url', { vpath, preferHttp }),
+  getMediaUrls: (vpaths, preferHttp) => ipcRenderer.invoke('get-media-urls', { vpaths, preferHttp }),
   releaseMediaUrl: (url) => ipcRenderer.invoke('release-media-url', { url }),
   setPreviewFullscreen: (fullscreen) => ipcRenderer.invoke('set-preview-fullscreen', { fullscreen }),
   onPreviewFullscreenChanged: (callback) => {
@@ -75,6 +87,7 @@ const api: ReederrAPI = {
   },
   getUserSettings: () => ipcRenderer.invoke('get-user-settings'),
   setUserSettings: (data) => ipcRenderer.invoke('set-user-settings', { data }),
+  openWithApp: (path, appPath) => ipcRenderer.invoke('open-with-app', { path, appPath }),
   is7zAvailable: () => ipcRenderer.invoke('is-7z-available'),
   onMenuNav: (cb) => {
     const fn = (_: unknown, a: string) => cb(a);
@@ -121,8 +134,31 @@ const api: ReederrAPI = {
     ipcRenderer.on('menu-zoom', fn);
     return () => ipcRenderer.removeListener('menu-zoom', fn);
   },
+  onMenuHelp: (cb) => {
+    const fn = () => cb();
+    ipcRenderer.on('menu-help', fn);
+    return () => ipcRenderer.removeListener('menu-help', fn);
+  },
   loadStore: () => ipcRenderer.invoke('load-store').catch(e => { console.error('[Preload] loadStore error:', e); throw e; }),
   saveStore: (data) => ipcRenderer.invoke('save-store', { data }).catch(e => { console.error('[Preload] saveStore error:', e); throw e; }),
+  onShowToast: (cb) => {
+    const fn = (_: unknown, m: string, t: 'info' | 'success' | 'warn' | 'error', d?: number) => cb(m, t, d);
+    ipcRenderer.on('show-toast', fn);
+    return () => ipcRenderer.removeListener('show-toast', fn);
+  },
+  rebuildMenu: (lang) => ipcRenderer.invoke('rebuild-menu', { lang }),
+  watchDirectory: (path) => ipcRenderer.invoke('watch-directory', { path }),
+  onFileSystemChanged: (cb) => {
+    const fn = (_: unknown, payload: { path: string }) => cb(payload);
+    ipcRenderer.on('file-system-changed', fn);
+    return () => ipcRenderer.removeListener('file-system-changed', fn);
+  },
+  getThumbnail: (path: string, width: number, height: number) => ipcRenderer.invoke('get-thumbnail', { path, width, height }),
+  onDirectoryChunk: (cb) => {
+    const fn = (_: unknown, payload: { path: string; files: any[] }) => cb(payload);
+    ipcRenderer.on('directory-chunk', fn);
+    return () => ipcRenderer.removeListener('directory-chunk', fn);
+  },
 };
 
 contextBridge.exposeInMainWorld('reederr', api);

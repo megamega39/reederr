@@ -1,6 +1,7 @@
 import { create } from 'zustand';
+import { PersistenceAPI } from '../services/api';
 
-const SETTINGS_KEY = 'mediaPlayer';
+const MEDIA_PLAYER_KEY = 'mediaPlayer';
 
 export interface MediaPlayerSettings {
   loopEnabled: boolean;
@@ -67,21 +68,20 @@ export const useMediaPlayerStore = create<MediaPlayerState>((set, get) => ({
 
   loadFromStorage: async () => {
     try {
-      const raw = await window.reederr.loadStore();
-      const data = raw[SETTINGS_KEY] as Partial<MediaPlayerSettings> | undefined;
-      if (data) {
-        console.log('[Persistence] Loaded media player state:', Object.keys(data));
+      const raw = await PersistenceAPI.loadStore();
+      const state = raw[MEDIA_PLAYER_KEY] as Partial<MediaPlayerSettings> | undefined;
+      if (state) {
         set((s) => ({
-          loopEnabled: typeof data.loopEnabled === 'boolean' ? data.loopEnabled : s.loopEnabled,
-          playbackRate: typeof data.playbackRate === 'number' ? clampRate(data.playbackRate) : s.playbackRate,
-          preservesPitch: typeof data.preservesPitch === 'boolean' ? data.preservesPitch : s.preservesPitch,
+          loopEnabled: typeof state.loopEnabled === 'boolean' ? state.loopEnabled : s.loopEnabled,
+          playbackRate: typeof state.playbackRate === 'number' ? clampRate(state.playbackRate) : s.playbackRate,
+          preservesPitch: typeof state.preservesPitch === 'boolean' ? state.preservesPitch : s.preservesPitch,
           isHydrated: true,
         }));
       } else {
         set({ isHydrated: true });
       }
     } catch (err) {
-      console.error('[Persistence] Failed to load media player state:', err);
+      console.error('[Persistence:MediaPlayer] Failed to load state:', err);
       set({ isHydrated: true });
     }
   },
@@ -89,17 +89,13 @@ export const useMediaPlayerStore = create<MediaPlayerState>((set, get) => ({
   saveToStorage: () => {
     const state = get();
     if (state.isRestoring || !state.isHydrated) {
-      console.log('[Persistence] Media save skipped (restoring or not hydrated)');
       return;
     }
 
-    // Using a simple timeout for debounce within the store to keep it simple
-    // but App.tsx level is usually better for complex stores.
-    // For this simple one, we'll just guard it.
     const { loopEnabled, playbackRate, preservesPitch } = state;
-    console.log('[Persistence] Saving media player state');
-    window.reederr.saveStore({
-      [SETTINGS_KEY]: { loopEnabled, playbackRate, preservesPitch },
+    const stateToSave = { loopEnabled, playbackRate, preservesPitch };
+    PersistenceAPI.saveStore({
+      [MEDIA_PLAYER_KEY]: stateToSave,
     });
   },
 }));

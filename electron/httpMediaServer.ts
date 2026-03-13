@@ -1,54 +1,14 @@
 import { createServer } from 'node:http';
-import { createReadStream, statSync } from 'node:fs';
 import { extname } from 'node:path';
-import { safeDecodeURIComponent } from './utils/uriUtils';
-
-const MIME_MAP: Record<string, string> = {
-  '.mp4': 'video/mp4',
-  '.webm': 'video/webm',
-  '.avi': 'video/x-msvideo',
-  '.mkv': 'video/x-matroska',
-  '.mov': 'video/quicktime',
-  '.wmv': 'video/x-ms-wmv',
-  '.m4v': 'video/x-m4v',
-  '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav',
-  '.ogg': 'audio/ogg',
-  '.flac': 'audio/flac',
-  '.m4a': 'audio/mp4',
-  '.aac': 'audio/aac',
-};
+import { safeDecodeURIComponent, parseRangeHeader } from './utils/uriUtils';
+import { splitArchivePath } from './vfs/utils';
+import { stat, streamFile } from './vfs/composite';
+import { MIME_MAP } from './vfs/constants';
+import { logger } from './utils/logger';
 
 function getMimeType(path: string): string {
   const ext = extname(path).toLowerCase();
   return MIME_MAP[ext] ?? 'application/octet-stream';
-}
-
-function parseRangeHeader(rangeHeader: string, fileSize: number): { start: number; end: number } | null {
-  const m = rangeHeader.trim().match(/bytes\s*=\s*(\d*)\s*-\s*(\d*)/);
-  if (!m) return null;
-  const lhs = m[1];
-  const rhs = m[2];
-  if (rhs !== undefined && rhs !== '' && (lhs === undefined || lhs === '')) {
-    const suffix = parseInt(rhs, 10);
-    if (!isNaN(suffix) && suffix > 0) {
-      return { start: Math.max(0, fileSize - suffix), end: fileSize - 1 };
-    }
-  }
-  if (lhs !== undefined && lhs !== '' && (rhs === undefined || rhs === '')) {
-    const start = parseInt(lhs, 10);
-    if (!isNaN(start)) {
-      return { start: Math.max(0, start), end: fileSize - 1 };
-    }
-  }
-  if (lhs !== '' && rhs !== '') {
-    const start = parseInt(lhs, 10);
-    const end = parseInt(rhs, 10);
-    if (!isNaN(start) && !isNaN(end) && start <= end) {
-      return { start: Math.max(0, start), end: Math.min(end, fileSize - 1) };
-    }
-  }
-  return null;
 }
 
 export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promise<{
@@ -56,7 +16,7 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
   close: () => void;
 }> {
   return new Promise((resolve) => {
-    const server = createServer((req, res) => {
+    const server = createServer(async (req, res) => {
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         res.writeHead(405, { Allow: 'GET, HEAD' });
         res.end();
@@ -75,14 +35,14 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
         res.end();
         return;
       }
-      let fileSize: number;
-      try {
-        fileSize = statSync(realPath).size;
-      } catch {
-        res.writeHead(404);
-        res.end();
+
+      const s = await stat(realPath);
+      if (!s || s.isDirectory) {
+        res.writeHead(s?.isDirectory ? 403 : 404);
+        res.end(s?.isDirectory ? 'Forbidden: Path is a directory' : 'Not Found');
         return;
       }
+      const fileSize = s.size;
       const contentType = getMimeType(realPath);
       const rangeHeader = req.headers.range ?? '';
       const isHead = req.method === 'HEAD';
@@ -93,16 +53,27 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
         if (isHead || !hasBody) res.end();
       };
 
-      if (!rangeHeader) {
+      // Check if the path is virtual (inside an archive and not extracted)
+      const isVirtual = !!splitArchivePath(realPath);
+
+      if (!rangeHeader || isVirtual) {
         sendHeaders(200, { 'Content-Length': String(fileSize) }, !isHead);
-        if (!isHead) createReadStream(realPath).pipe(res);
+        if (!isHead) {
+          const stream = streamFile(realPath);
+          stream.on('error', (err) => {
+            logger.error(`[HttpMediaServer] Stream error for ${realPath}:`, err);
+            if (!res.headersSent) res.writeHead(500);
+            res.end();
+          });
+          stream.pipe(res);
+        }
         return;
       }
 
       const range = parseRangeHeader(rangeHeader, fileSize);
       if (!range) {
         sendHeaders(200, { 'Content-Length': String(fileSize) }, !isHead);
-        if (!isHead) createReadStream(realPath).pipe(res);
+        if (!isHead) streamFile(realPath).pipe(res);
         return;
       }
 
@@ -112,7 +83,19 @@ export function createHttpMediaServer(mediaPathMap: Map<string, string>): Promis
         'Content-Length': String(chunkSize),
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       }, !isHead);
-      if (!isHead) createReadStream(realPath, { start, end }).pipe(res);
+      
+      if (!isHead) {
+        const stream = streamFile(realPath, { start, end });
+        stream.on('error', (err) => {
+          logger.error(`[HttpMediaServer] Range stream error for ${realPath}:`, err);
+          if (!res.headersSent) res.writeHead(500);
+          res.end();
+        });
+        stream.pipe(res);
+        req.on('close', () => {
+          stream.destroy();
+        });
+      }
     });
 
     server.listen(0, '127.0.0.1', () => {

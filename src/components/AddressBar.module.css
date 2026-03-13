@@ -1,0 +1,123 @@
+.addressBar {
+  display: flex;
+  align-items: center;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border-main);
+  padding: 2px 8px;
+  height: 28px;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+}
+
+.label {
+  color: var(--text-muted);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.label:hover {
+  color: var(--text-main);
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 22px;
+  background: var(--win-bg-white);
+  border: 1px solid var(--border-light);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.form {
+  display: flex;
+  flex: 1;
+  height: 100%;
+  align-items: center;
+}
+
+.input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  padding: 0 6px;
+  font-size: var(--font-size-sm);
+  outline: none;
+  height: 100%;
+}
+
+.goBtn {
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border-light);
+  color: var(--text-muted);
+  padding: 0 8px;
+  cursor: pointer;
+  height: 100%;
+  height: 100%;
+}
+
+.goBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  height: 100%;
+  padding: 0 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.breadcrumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.breadcrumbItem {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.breadcrumbBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  font-size: var(--font-size-xs);
+  padding: 0 4px;
+  cursor: pointer;
+  height: 20px;
+  border-radius: 2px;
+  white-space: nowrap;
+  white-space: nowrap;
+}
+
+.breadcrumbBtn:hover {
+  background: var(--bg-hover);
+}
+
+.breadcrumbBtn.isArchive {
+  color: #b8860b;
+  font-weight: 500;
+}
+
+.breadcrumbSep {
+  color: var(--text-disabled);
+  margin: 0 2px;
+}
+
+.spacer {
+  flex: 1;
+  height: 100%;
+  min-width: 20px;
+  cursor: text;
+}

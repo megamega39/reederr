@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { FileSystemAPI } from '../services/api';
+import { Monitor, Network } from 'lucide-react';
 
 /** key = absPath + '@' + size でキャッシュ（main側と同等） */
 const iconCache = new Map<string, string>();
@@ -12,7 +14,7 @@ interface FileIconProps {
   path: string;
   isDirectory?: boolean;
   className?: string;
-  size?: 16 | 20;
+  size?: number;
 }
 
 export function FileIcon({
@@ -21,14 +23,14 @@ export function FileIcon({
   className = '',
   size = 16,
 }: FileIconProps) {
-  const iconSizeNum: 16 | 20 = size === 20 ? 20 : 16;
+  const iconSizeNum: 16 | 20 = size >= 20 ? 20 : 16;
   const cacheKey = path ? getCacheKey(path, iconSizeNum) : '';
   const [dataUrl, setDataUrl] = useState<string | null>(() =>
     cacheKey ? (iconCache.get(cacheKey) ?? null) : null
   );
 
   useEffect(() => {
-    if (!path || !window.reederr?.getFileIcon) return;
+    if (!path || !FileSystemAPI.getFileIcon) return;
     const key = getCacheKey(path, iconSizeNum);
     const cached = iconCache.get(key);
     if (cached) {
@@ -36,7 +38,7 @@ export function FileIcon({
       return;
     }
     let cancelled = false;
-    window.reederr
+    FileSystemAPI
       .getFileIcon(path, iconSizeNum)
       .then((url) => {
         if (!cancelled && url) {
@@ -53,6 +55,13 @@ export function FileIcon({
   }, [path, iconSizeNum]);
 
   const iconSize = size === 20 ? 20 : 16;
+
+  if (path === 'pc') {
+    return <Monitor size={iconSize} className={className} style={{ flexShrink: 0 }} />;
+  }
+  if (path === 'network') {
+    return <Network size={iconSize} className={className} style={{ flexShrink: 0 }} />;
+  }
 
   if (!path) {
     return (

@@ -1,60 +1,105 @@
-import { memo } from 'react';
-import { useViewerStore } from '../stores/viewerStore';
+import { memo, useMemo } from 'react';
+import { useAppStore } from '../stores/appStore';
+import { useNavigationStore } from '../stores/navigationStore';
+import { useMediaStore } from '../stores/mediaStore';
 import { useLayoutStore } from '../stores/layoutStore';
+import { normalizePath } from '../stores/viewerStore.utils';
+import styles from './StatusBar.module.css';
+import { useTranslation } from '../i18n';
+import { useShallow } from 'zustand/react/shallow';
 
 function formatSize(bytes?: number) {
-  if (bytes == null) return '';
+  if (bytes == null || bytes < 0) return '';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 export const StatusBar = memo(() => {
-  const selectedPath = useViewerStore((s) => s.selectedPath);
-  const selectedEntry = useViewerStore((s) => s.selectedEntry);
-  const getSelectedPosition = useViewerStore((s) => s.getSelectedPosition);
-  const imageDimensions = useViewerStore((s) => s.imageDimensions);
-  const error = useViewerStore((s) => s.error);
+  const { t } = useTranslation();
+  
+  const { selectedPath, selectedPaths, selectedEntry, getSelectedPosition, imageDimensions } = useMediaStore(
+    useShallow((s) => ({
+      selectedPath: s.selectedPath,
+      selectedPaths: s.selectedPaths,
+      selectedEntry: s.selectedEntry,
+      getSelectedPosition: s.getSelectedPosition,
+      imageDimensions: s.imageDimensions,
+    }))
+  );
+
+  const { entries } = useNavigationStore(
+    useShallow((s) => ({
+      entries: s.entries,
+    }))
+  );
+
+  const { error } = useAppStore(
+    useShallow((s) => ({
+      error: s.error,
+    }))
+  );
+
   const scaleMode = useLayoutStore((s) => s.scaleMode);
 
   const entry = selectedEntry();
   const { pos, total } = getSelectedPosition();
   const dims = selectedPath ? imageDimensions[selectedPath] : null;
 
+  // Calculate multi-selection stats
+  const selectionStats = useMemo(() => {
+    if (selectedPaths.length <= 1) return null;
+    let totalSize = 0;
+    selectedPaths.forEach(path => {
+      const norm = normalizePath(path);
+      const e = entries.find(x => normalizePath(x.path) === norm);
+      if (e && e.size != null && e.size > 0) {
+        totalSize += e.size;
+      }
+    });
+    return {
+      count: selectedPaths.length,
+      size: totalSize
+    };
+  }, [selectedPaths, entries]);
+
   return (
-    <div className="status-bar">
-      <div className="status-bar-section main">
+    <div className={styles.statusBar}>
+      <div className={`${styles.section} ${styles.main}`}>
         {error ? (
-          <span className="status-bar-error" title={error}>
+          <span className={styles.error} title={error}>
             ⚠ {error}
           </span>
         ) : (
-          <span className="status-bar-path" title={entry?.path}>
-            {entry?.path ?? '-'}
+          <span className={styles.path} title={entry?.path}>
+            {selectionStats 
+              ? t('statusBar.itemsSelected', { count: selectionStats.count, size: formatSize(selectionStats.size) })
+              : (entry?.path ?? '-')}
           </span>
         )}
       </div>
 
-      <div className="status-bar-section info">
-        {dims && (
-          <span className="status-bar-dims">
+      <div className={`${styles.section} ${styles.info}`}>
+        {!selectionStats && dims && (
+          <span className={styles.dims}>
             {dims.w} × {dims.h}
           </span>
         )}
-        {entry?.size != null && (
-          <span className="status-bar-size">
+        {!selectionStats && entry?.size != null && (
+          <span className={styles.size}>
             {formatSize(entry.size)}
           </span>
         )}
-        <span className="status-bar-scale">
-          {scaleMode === 'fit-window' && 'ウィンドウに合わせる'}
-          {scaleMode === 'fit-width' && '幅に合わせる'}
-          {scaleMode === 'fit-height' && '高さに合わせる'}
-          {scaleMode === 'original' && '等倍'}
+        <span className={styles.scale}>
+          {scaleMode === 'fit-window' && t('statusBar.scaleFitWindow')}
+          {scaleMode === 'fit-width' && t('statusBar.scaleFitWidth')}
+          {scaleMode === 'fit-height' && t('statusBar.scaleFitHeight')}
+          {scaleMode === 'original' && t('statusBar.scaleOriginal')}
         </span>
       </div>
 
-      <div className="status-bar-section pos">
+      <div className={`${styles.section} ${styles.pos}`}>
         {pos} / {total}
       </div>
     </div>

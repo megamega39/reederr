@@ -1,7 +1,8 @@
 import { app } from 'electron';
-import { statSync } from 'node:fs';
+import { statSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { platform } from 'node:os';
+import { toLongPathIfNeeded } from './utils/longPath';
 
 export type IconSize = 16 | 20;
 
@@ -17,11 +18,29 @@ const FILE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fi
   <path d="M14 2v6h6" fill="none"/>
 </svg>`;
 
+const IMAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#E1F5FE" stroke="#0288D1" stroke-width="1">
+  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+  <circle cx="8.5" cy="8.5" r="1.5"/>
+  <polyline points="21 15 16 10 5 21"/>
+</svg>`;
+
+const ARCHIVE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#FFF9C4" stroke="#FBC02D" stroke-width="1">
+  <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+</svg>`;
+
+const VIDEO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#FCE4EC" stroke="#C2185B" stroke-width="1">
+  <path d="M18 3v2h-2V3H8v2H6V3H4v18h2v-2h2v2h8v-2h2v2h2V3h-2zM8 17H6v-2h2v2zm0-4H6v-2h2v2zm0-4H6V7h2v2zm10 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2z"/>
+</svg>`;
+
 function svgToDataUrl(svg: string): string {
   return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
 }
 
 const FALLBACK_FOLDER = svgToDataUrl(FOLDER_SVG);
+const FALLBACK_FILE = svgToDataUrl(FILE_SVG);
+const FALLBACK_IMAGE = svgToDataUrl(IMAGE_SVG);
+const FALLBACK_ARCHIVE = svgToDataUrl(ARCHIVE_SVG);
+const FALLBACK_VIDEO = svgToDataUrl(VIDEO_SVG);
 
 /** 通常フォルダ用の黄色フォルダアイコン（Windows標準と同等、16/20px） */
 function getFolderStockDataUrl(size: 16 | 20): string {
@@ -47,7 +66,6 @@ function isSpecialFolder(absPath: string): boolean {
   }
   return false;
 }
-const FALLBACK_FILE = svgToDataUrl(FILE_SVG);
 
 /** キャッシュキー: absPath + '@' + size（拡張子キー禁止） */
 function getCacheKey(absPath: string, size: IconSize): string {
@@ -61,10 +79,6 @@ function isDriveRoot(absPath: string): boolean {
   return !!root && normalized === root;
 }
 
-function getFallback(isDir: boolean): string {
-  return isDir ? FALLBACK_FOLDER : FALLBACK_FILE;
-}
-
 function resizeToDataUrl(icon: Electron.NativeImage, size: IconSize): string {
   return icon.resize({ width: size, height: size }).toDataURL();
 }
@@ -72,9 +86,30 @@ function resizeToDataUrl(icon: Electron.NativeImage, size: IconSize): string {
 export async function getFileIcon(absPath: string, size: IconSize): Promise<string> {
   if (!absPath) return FALLBACK_FILE;
 
+  const ext = path.extname(absPath).toLowerCase();
+  const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.ico'].includes(ext);
+  const isArchive = ['.zip', '.rar', '.7z', '.cbz', '.cbr', '.tar', '.gz'].includes(ext);
+  const isVideo = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm'].includes(ext);
+
+  function getBestFallback(isDir: boolean): string {
+    if (isDir) return FALLBACK_FOLDER;
+    if (isImage) return FALLBACK_IMAGE;
+    if (isArchive) return FALLBACK_ARCHIVE;
+    if (isVideo) return FALLBACK_VIDEO;
+    return FALLBACK_FILE;
+  }
+
+  const longPath = toLongPathIfNeeded(absPath);
+  const exists = existsSync(longPath);
+
+  // Handle virtual paths (inside archives) OR non-existent files
+  if (!exists) {
+    return getBestFallback(false);
+  }
+
   let isDirectory: boolean;
   try {
-    isDirectory = statSync(absPath).isDirectory();
+    isDirectory = statSync(longPath).isDirectory();
   } catch {
     isDirectory = false;
   }
@@ -82,7 +117,7 @@ export async function getFileIcon(absPath: string, size: IconSize): Promise<stri
   const driveRoot = isDriveRoot(absPath);
 
   if (platform() !== 'win32') {
-    return getFallback(isDirectory);
+    return getBestFallback(isDirectory);
   }
 
   if (isDirectory && !driveRoot) {
@@ -119,9 +154,19 @@ export async function getFileIcon(absPath: string, size: IconSize): Promise<stri
           return dataUrl;
         }
       } catch (e) {
+        if (absPath !== longPath) {
+          try {
+            const icon = await app.getFileIcon(longPath, { size: 'normal' });
+            const dataUrl = resizeToDataUrl(icon, size);
+            if (dataUrl && dataUrl.startsWith('data:')) {
+              iconCache.set(cacheKey, dataUrl);
+              return dataUrl;
+            }
+          } catch { /* ignore */ }
+        }
         console.warn('[getFileIcon] fetch failed:', absPath, e);
       }
-      const result = getFallback(isDirectory);
+      const result = getBestFallback(isDirectory);
       iconCache.set(cacheKey, result);
       return result;
     })().finally(() => {
@@ -131,4 +176,3 @@ export async function getFileIcon(absPath: string, size: IconSize): Promise<stri
   }
   return pending;
 }
-

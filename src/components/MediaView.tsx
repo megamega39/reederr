@@ -1,84 +1,112 @@
-import { useEffect, useRef, memo } from 'react';
-import { useViewerStore } from '../stores/viewerStore';
+import { useEffect, memo } from 'react';
+import { useAppStore } from '../stores/appStore';
+import { useNavigationStore } from '../stores/navigationStore';
+import { useMediaStore } from '../stores/mediaStore';
 import { useLayoutStore } from '../stores/layoutStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { useMediaPlayerStore } from '../stores/mediaPlayerStore';
 import { ImageView } from './ImageView';
-
-function applyMediaProps(
-  el: HTMLMediaElement | null,
-  loop: boolean,
-  rate: number,
-  preservesPitch: boolean
-) {
-  if (!el) return;
-  el.loop = loop;
-  el.playbackRate = rate;
-  if ('preservesPitch' in el) (el as HTMLMediaElement & { preservesPitch: boolean }).preservesPitch = preservesPitch;
-  if ('webkitPreservesPitch' in el) (el as HTMLMediaElement & { webkitPreservesPitch: boolean }).webkitPreservesPitch = preservesPitch;
-}
+import { MediaAPI } from '../services/api';
+import { MediaVideo } from './MediaVideo';
+import { MediaAudio } from './MediaAudio';
+import styles from './MediaView.module.css';
+import { useTranslation } from '../i18n';
+import { useShallow } from 'zustand/react/shallow';
 
 export const MediaView = memo(() => {
-  const mediaBlobUrl = useViewerStore((s) => s.mediaBlobUrl);
-  const mediaBlobUrls = useViewerStore((s) => s.mediaBlobUrls);
-  const mediaType = useViewerStore((s) => s.mediaType);
-  const selectedEntry = useViewerStore((s) => s.selectedEntry);
-  const getVisibleEntries = useViewerStore((s) => s.getVisibleEntries);
-  const goPrev = useViewerStore((s) => s.goPrev);
-  const goNext = useViewerStore((s) => s.goNext);
-  const nextEntry = useViewerStore((s) => s.nextEntry);
-  const setImageDimensions = useViewerStore((s) => s.setImageDimensions);
-  const loadMedia = useViewerStore((s) => s.loadMedia);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const viewMode = useLayoutStore((s) => s.viewMode);
-  const binding = useLayoutStore((s) => s.binding);
-  const autoThreshold = useLayoutStore((s) => s.autoThreshold);
-  const selectedPath = useViewerStore((s) => s.selectedPath);
-  const isPreviewFullscreen = useLayoutStore((s) => s.isPreviewFullscreen);
+  const { t } = useTranslation();
+  
+  const { 
+    mediaBlobUrl, mediaBlobUrls, mediaType, selectedPath, selectedPaths,
+    selectedEntry, goPrevPage, goNextPage, goNext, nextEntry,
+    setImageDimensions, loadMedia
+  } = useMediaStore(
+    useShallow((s) => ({
+      mediaBlobUrl: s.mediaBlobUrl,
+      mediaBlobUrls: s.mediaBlobUrls,
+      mediaType: s.mediaType,
+      selectedPath: s.selectedPath,
+      selectedPaths: s.selectedPaths,
+      selectedEntry: s.selectedEntry,
+      goPrevPage: s.goPrevPage,
+      goNextPage: s.goNextPage,
+      goNext: s.goNext,
+      nextEntry: s.nextEntry,
+      setImageDimensions: s.setImageDimensions,
+      loadMedia: s.loadMedia,
+    }))
+  );
 
-  const loopEnabled = useMediaPlayerStore((s) => s.loopEnabled);
-  const playbackRate = useMediaPlayerStore((s) => s.playbackRate);
-  const preservesPitch = useMediaPlayerStore((s) => s.preservesPitch);
-  const toggleLoop = useMediaPlayerStore((s) => s.toggleLoop);
-  const changePlaybackRate = useMediaPlayerStore((s) => s.changePlaybackRate);
-  const resetPlaybackRate = useMediaPlayerStore((s) => s.resetPlaybackRate);
-  const loadFromStorage = useMediaPlayerStore((s) => s.loadFromStorage);
+  const { error, isLoading } = useAppStore(
+    useShallow((s) => ({
+      error: s.error,
+      isLoading: s.isLoading,
+    }))
+  );
+
+  const { goBack } = useNavigationStore(
+    useShallow((s) => ({
+      goBack: s.goBack,
+    }))
+  );
+
+  // use goBack directly in onClick
+
+  const { viewMode, binding, autoThreshold, autoPlay } = useSettingsStore(
+    useShallow((s) => ({
+      viewMode: s.viewMode,
+      binding: s.binding,
+      autoThreshold: s.autoThreshold,
+      autoPlay: s.autoPlay,
+    }))
+  );
+
+  const { isPreviewFullscreen } = useLayoutStore(
+    useShallow((s) => ({
+      isPreviewFullscreen: s.isPreviewFullscreen,
+    }))
+  );
+
+  const {
+    loopEnabled, toggleLoop, changePlaybackRate, resetPlaybackRate, loadFromStorage
+  } = useMediaPlayerStore(
+    useShallow((s) => ({
+      loopEnabled: s.loopEnabled,
+      toggleLoop: s.toggleLoop,
+      changePlaybackRate: s.changePlaybackRate,
+      resetPlaybackRate: s.resetPlaybackRate,
+      loadFromStorage: s.loadFromStorage,
+    }))
+  );
 
   useEffect(() => {
     loadFromStorage();
   }, [loadFromStorage]);
 
   useEffect(() => {
-    if (mediaType === 'image' && selectedPath) {
+    // We only trigger re-load here for layout-driven changes (like spread mode) 
+    // that might require loading a second image.
+    // Basic navigation is already handled by coordinated store updates in viewerStore.ts.
+    if (mediaType === 'image' && selectedPath && (viewMode !== 'single')) {
       loadMedia(selectedPath);
     }
   }, [viewMode, binding, autoThreshold]);
-
-  useEffect(() => {
-    applyMediaProps(audioRef.current, loopEnabled, playbackRate, preservesPitch);
-    applyMediaProps(videoRef.current, loopEnabled, playbackRate, preservesPitch);
-  }, [loopEnabled, playbackRate, preservesPitch]);
-
-  useEffect(() => {
-    const el = mediaType === 'video' ? videoRef.current : mediaType === 'audio' ? audioRef.current : null;
-    if (el) applyMediaProps(el, loopEnabled, playbackRate, preservesPitch);
-  }, [mediaType, mediaBlobUrl]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        goPrev();
+        goPrevPage();
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        goNext();
+        goNextPage();
       } else if (e.key === ' ' || e.key === 'Spacebar') {
         e.preventDefault();
-        goNext();
+        goNextPage();
       } else if (e.key === 'Backspace') {
         e.preventDefault();
-        goPrev();
+        goPrevPage();
       } else if (e.key === 'l' || e.key === 'L') {
         if (!e.ctrlKey && !e.metaKey && !e.altKey) {
           e.preventDefault();
@@ -97,21 +125,43 @@ export const MediaView = memo(() => {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [goPrev, goNext, toggleLoop, changePlaybackRate, resetPlaybackRate]);
+  }, [goPrevPage, goNextPage, toggleLoop, changePlaybackRate, resetPlaybackRate]);
 
   const entry = selectedEntry();
 
   if (!entry) {
     return (
-      <div className="media-view empty">
-        <div className="media-view-placeholder">画像・動画・音楽を選択してください</div>
+      <div className={`${styles.mediaView} ${styles.empty}`}>
+        <div className={styles.placeholder}>{t('media.audioPlaceholder')}</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={`${styles.mediaView} ${styles.error}`}>
+        <div className={styles.errorIcon}>⚠️</div>
+        <div className={styles.errorMessage}>{error}</div>
+        <div className={styles.errorActions}>
+          <button className={styles.retryButton} onClick={() => selectedPath && loadMedia(selectedPath)}>{t('common.retry')}</button>
+          <button className={styles.backButton} onClick={() => goBack()}>{t('common.back')}</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading && mediaType !== 'image') {
+    return (
+      <div className={`${styles.mediaView} ${styles.loading}`}>
+        <div className={styles.spinner} />
+        <div className={styles.loadingText}>{t('media.videoPreparing')}</div>
       </div>
     );
   }
 
   const handleToggleFullscreen = () => {
     const next = !isPreviewFullscreen;
-    window.reederr.setPreviewFullscreen(next);
+    MediaAPI.setPreviewFullscreen(next);
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
@@ -123,48 +173,36 @@ export const MediaView = memo(() => {
     if (!loopEnabled && nextEntry()) goNext();
   };
 
-  const visibleEntries = getVisibleEntries();
   const rawSrcs = mediaBlobUrls.length > 0 ? mediaBlobUrls : mediaBlobUrl ? [mediaBlobUrl] : [];
-  const imageSrcs = rawSrcs.slice(0, visibleEntries.length);
-  const imagePaths = visibleEntries.map((e) => e.path);
+  const imagePaths = selectedPaths.length > 0 ? selectedPaths : [selectedPath ?? ''];
+  const imageSrcs = rawSrcs.slice(0, imagePaths.length);
 
   return (
-    <div className={`media-view ${!entry ? 'empty' : `media-view--${mediaType}`}`} onDoubleClick={handleDoubleClick}>
-      {!entry ? (
-        <div className="media-view-placeholder">画像・動画・音楽を選択してください</div>
+    <div 
+      className={`${styles.mediaView} ${!entry ? styles.empty : styles[`mediaView--${mediaType}`] || ''}`} 
+      onDoubleClick={handleDoubleClick}
+    >
+      {!entry || !mediaType ? (
+        <div className={styles.placeholder}>{t('media.audioPlaceholder')}</div>
       ) : mediaType === 'audio' ? (
-        <div className="media-audio-wrap" key={`audio-wrap-${entry.path}-${mediaBlobUrl}`}>
-          <audio
-            key={`audio-${entry.path}-${mediaBlobUrl}`}
-            ref={audioRef}
-            src={mediaBlobUrl ?? undefined}
-            controls
-            autoPlay
-            preload="metadata"
-            loop={loopEnabled}
-            onEnded={handleMediaEnded}
-            className="media-audio"
-            style={{ width: '100%', maxWidth: 480 }}
-          />
-          <span className="media-audio-filename">{entry.name}</span>
-        </div>
+        <MediaAudio
+          key={mediaBlobUrl}
+          src={mediaBlobUrl ?? ''}
+          name={entry.name}
+          autoPlay={autoPlay}
+          loop={loopEnabled}
+          onEnded={handleMediaEnded}
+        />
       ) : mediaType === 'video' ? (
-        <div className="media-video-wrap" key={`video-wrap-${entry.path}-${mediaBlobUrl}`} style={{ width: '100%', height: '100%' }}>
-          <video
-            key={`video-${entry.path}-${mediaBlobUrl}`}
-            ref={videoRef}
-            src={mediaBlobUrl ?? undefined}
-            controls
-            autoPlay
-            preload="metadata"
-            loop={loopEnabled}
-            onEnded={handleMediaEnded}
-            className="media-video"
-            style={{ objectFit: 'contain', width: '100%', height: '100%' }}
-          />
-        </div>
+        <MediaVideo
+          key={mediaBlobUrl}
+          src={mediaBlobUrl ?? ''}
+          autoPlay={autoPlay}
+          loop={loopEnabled}
+          onEnded={handleMediaEnded}
+        />
       ) : (
-        <div className="media-image-wrap" key={`image-wrap-${entry.path}`} style={{ width: '100%', height: '100%' }}>
+        <div className="media-image-wrap" style={{ width: '100%', height: '100%' }}>
           <ImageView
             srcs={imageSrcs}
             alt={entry.name}

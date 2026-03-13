@@ -1,10 +1,7 @@
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import type { DirectoryEntry, FileStats } from './types';
-import type { SevenZipEntry } from './sevenZip';
 import {
   extractToStdout,
   extractToTemp,
@@ -14,17 +11,12 @@ import {
 import { get7zPath } from '../sevenZipPath';
 import { getArchiveIndex } from './archiveIndexCache';
 import { splitArchivePath } from './utils';
-
-const RAR_EXT = ['.rar', '.cbr'];
-const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.jpe', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif']);
-const VIDEO_EXT = new Set(['.mp4', '.webm', '.avi', '.mkv', '.mov', '.wmv', '.m4v']);
-const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac']);
-const MAX_TEMP_FILES = 200;
-const MAX_TEMP_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
+import { ARCHIVE_EXTS, IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from './constants';
+import { tempManager } from './tempManager';
 
 function isRarArchive(path: string): boolean {
   const lower = path.toLowerCase();
-  return RAR_EXT.some((ext) => lower.endsWith(ext));
+  return (ARCHIVE_EXTS as string[]).some((ext) => lower.endsWith(ext)) && (lower.endsWith('.rar') || lower.endsWith('.cbr'));
 }
 
 function parseVpath(vpath: string): { archivePath: string; innerPath: string } | null {
@@ -46,93 +38,17 @@ function isJunkPath(name: string): boolean {
   return name === '__MACOSX' || name.startsWith('._') || name === '.DS_Store';
 }
 
-const tempExtractCache = new Map<
-  string,
-  { path: string; size: number; lastAccess: number }
->();
-let tempCacheTotalBytes = 0;
-const TEMP_BASE = join(tmpdir(), 'reederr-extract');
-
-function ensureTempDir(): string {
-  if (!existsSync(TEMP_BASE)) {
-    mkdirSync(TEMP_BASE, { recursive: true });
-  }
-  return TEMP_BASE;
-}
-
-function makeTempSubdir(archivePath: string, innerPath: string): string {
-  const hash = createHash('sha1')
-    .update(archivePath + innerPath)
-    .digest('hex')
-    .slice(0, 16);
-  const sub = join(ensureTempDir(), hash);
-  if (!existsSync(sub)) mkdirSync(sub, { recursive: true });
-  return sub;
-}
-
-function getTempCacheKey(archivePath: string, innerPath: string): string {
-  return `${archivePath}::${innerPath}`;
-}
-
-function evictTempCache(): void {
-  const entries = [...tempExtractCache.entries()].sort(
-    (a, b) => a[1].lastAccess - b[1].lastAccess
-  );
-  for (const [key, val] of entries) {
-    if (tempExtractCache.size <= 1 && tempCacheTotalBytes < MAX_TEMP_BYTES * 0.5) break;
-    try {
-      unlinkSync(val.path);
-    } catch {
-      /* ignore */
-    }
-    tempExtractCache.delete(key);
-    tempCacheTotalBytes -= val.size;
-  }
-}
-
-const MEDIA_TEMP_BASE = join(tmpdir(), 'reederr-media');
-
 export function cleanupTempExtract(): void {
-  for (const base of [TEMP_BASE, MEDIA_TEMP_BASE]) {
-    if (!existsSync(base)) continue;
-    try {
-      for (const name of readdirSync(base)) {
-        const p = join(base, name);
-        try {
-          rmSync(p, { recursive: true });
-        } catch {
-          /* ignore */
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  try {
-    for (const name of readdirSync(tmpdir())) {
-      if (name.startsWith('reederr-') && name !== 'reederr-media' && name !== 'reederr-extract') {
-        const p = join(tmpdir(), name);
-        try {
-          rmSync(p, { recursive: true });
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  tempExtractCache.clear();
-  tempCacheTotalBytes = 0;
+  tempManager.cleanupAll();
 }
 
 export function isRarListingPath(path: string): boolean {
-  if (!path.includes('!')) {
+  const split = splitArchivePath(path);
+  if (!split) {
     return existsSync(path) && isRarArchive(path);
   }
-  const parsed = parseVpath(path);
-  if (!parsed) return false;
-  return existsSync(parsed.archivePath) && isRarArchive(parsed.archivePath);
+  const archivePath = split[0];
+  return existsSync(archivePath) && isRarArchive(archivePath);
 }
 
 /**
@@ -264,38 +180,21 @@ export async function rarReadFile(vpath: string): Promise<ArrayBuffer> {
   if (!entry) throw new Error(`アーカイブ内に見つかりません: ${parsed.innerPath}`);
   if (entry.isEncrypted) throw new Error('Encrypted archive. Password-protected archives are not supported.');
 
+  const cacheKey = `vfs:${parsed.archivePath}!${parsed.innerPath}`;
   const useTemp =
     isLargeFile(entry.size) || isMediaRequiringTempExtract(entry.path);
 
   if (useTemp) {
-    const cacheKey = getTempCacheKey(parsed.archivePath, parsed.innerPath);
-    const cached = tempExtractCache.get(cacheKey);
-    if (cached && existsSync(cached.path)) {
-      cached.lastAccess = Date.now();
-      const buf = readFileSync(cached.path);
-      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+    let extractedPath = tempManager.getFile(cacheKey);
+    if (!extractedPath) {
+      const subdir = tempManager.getTempDirForEntry(parsed.archivePath, parsed.innerPath);
+      extractedPath = await extractToTemp(
+        parsed.archivePath,
+        parsed.innerPath,
+        subdir
+      );
+      tempManager.registerFile(cacheKey, extractedPath);
     }
-
-    const subdir = makeTempSubdir(parsed.archivePath, parsed.innerPath);
-    const extractedPath = await extractToTemp(
-      parsed.archivePath,
-      parsed.innerPath,
-      subdir
-    );
-
-    while (
-      tempExtractCache.size >= MAX_TEMP_FILES ||
-      tempCacheTotalBytes + entry.size > MAX_TEMP_BYTES
-    ) {
-      evictTempCache();
-    }
-
-    tempExtractCache.set(cacheKey, {
-      path: extractedPath,
-      size: entry.size,
-      lastAccess: Date.now(),
-    });
-    tempCacheTotalBytes += entry.size;
 
     const buf = readFileSync(extractedPath);
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
@@ -312,10 +211,6 @@ export function rarResolveRealPath(vpath: string): string | null {
   const parsed = parseVpath(vpath);
   if (!parsed) return null;
 
-  const cacheKey = getTempCacheKey(parsed.archivePath, parsed.innerPath);
-  const cached = tempExtractCache.get(cacheKey);
-  if (cached && existsSync(cached.path)) {
-    return cached.path;
-  }
-  return null;
+  const cacheKey = `vfs:${parsed.archivePath}!${parsed.innerPath}`;
+  return tempManager.getFile(cacheKey);
 }
